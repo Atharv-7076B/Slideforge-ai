@@ -1,4 +1,4 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { getSession } from '#/lib/auth.functions'
@@ -16,14 +16,22 @@ import {
   SelectValue,
 } from '#/components/ui/select'
 
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+
 import {
   LAYOUT_OPTIONS,
   SLIDE_STYLES,
   TONE_OPTIONS,
 } from '#/features/constant/presentation-options'
 
-import { Wand2 } from 'lucide-react'
 import { PRESENTATION_TEMPLATES } from '#/features/constant/presentation-templates'
+
+import { createPresentation } from '#/features/actions/presentation-mutation'
+
+import { presentationQueryKeys } from '#/features/presentation/hooks/query-keys'
+
+import { Wand2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 type HomeFormState = {
   content: string
@@ -55,6 +63,10 @@ export const Route = createFileRoute('/')({
 })
 
 function RouteComponent() {
+  const queryClient = useQueryClient()
+
+  const navigate = useNavigate()
+
   const [form, setForm] = useState<HomeFormState>({
     content: '',
     slideCount: 8,
@@ -63,9 +75,49 @@ function RouteComponent() {
     layout: 'balanced',
   })
 
+  const createMutation = useMutation({
+    mutationFn: () =>
+      createPresentation({
+        data: {
+          prompt: form.content,
+          slideCount: form.slideCount,
+          style: form.style,
+          tone: form.tone,
+          layout: form.layout,
+        },
+      }),
+
+    onSuccess: async (data) => {
+      toast.success('Presentation created successfully')
+
+      await queryClient.invalidateQueries({
+        queryKey: presentationQueryKeys.list(),
+      })
+
+      navigate({
+        to: '/presentations/$presentationId',
+        params: {
+          presentationId: data.id,
+        },
+      })
+    },
+
+    onError: (error) => {
+      console.error(error)
+
+      toast.error('Could not create presentation. Please try again.')
+    },
+  })
+
+  const handleCreate = () => {
+    if (!form.content.trim()) {
+      toast.error('Please enter the content first')
+      return
+    }
+    createMutation.mutate()
+  }
   return (
     <main className="min-h-screen px-4 pt-24 pb-16">
-      {/* Navbar width larger */}
       <div className="mx-auto w-full max-w-5xl">
         {/* Header */}
         <div className="mb-10 space-y-3 text-center">
@@ -79,7 +131,7 @@ function RouteComponent() {
           </p>
         </div>
 
-        {/* Smaller Content Box */}
+        {/* Form Card */}
         <div className="mx-auto w-full max-w-[860px] rounded-3xl border border-border/40 bg-card/60 p-5 shadow-2xl backdrop-blur-xl">
           {/* Textarea */}
           <div className="space-y-2">
@@ -145,17 +197,13 @@ function RouteComponent() {
                   }))
                 }
               >
-                <SelectTrigger className="h-10 w-full rounded-xl border border-border/50 bg-background/40 px-4 text-sm shadow-sm backdrop-blur-md transition-all hover:border-primary hover:bg-primary/5 focus:border-primary focus:ring-2 focus:ring-primary/20 data-[state=open]:border-primary data-[state=open]:bg-primary/5">
+                <SelectTrigger className="h-10 w-full rounded-xl border border-border/50 bg-background/40 px-4 text-sm shadow-sm">
                   <SelectValue />
                 </SelectTrigger>
 
-                <SelectContent className="glass border border-primary/20">
+                <SelectContent>
                   {SLIDE_STYLES.map((style) => (
-                    <SelectItem
-                      key={style.value}
-                      value={style.value}
-                      className="cursor-pointer rounded-md transition-colors focus:bg-primary focus:text-primary-foreground data-[highlighted]:bg-primary data-[highlighted]:text-primary-foreground"
-                    >
+                    <SelectItem key={style.value} value={style.value}>
                       {style.label}
                     </SelectItem>
                   ))}
@@ -178,17 +226,13 @@ function RouteComponent() {
                   }))
                 }
               >
-                <SelectTrigger className="h-10 w-full rounded-xl border border-border/50 bg-background/40 px-4 text-sm shadow-sm backdrop-blur-md transition-all hover:border-primary hover:bg-primary/5 focus:border-primary focus:ring-2 focus:ring-primary/20 data-[state=open]:border-primary data-[state=open]:bg-primary/5">
+                <SelectTrigger className="h-10 w-full rounded-xl border border-border/50 bg-background/40 px-4 text-sm shadow-sm">
                   <SelectValue />
                 </SelectTrigger>
 
-                <SelectContent className="glass border border-primary/20">
+                <SelectContent>
                   {TONE_OPTIONS.map((tone) => (
-                    <SelectItem
-                      key={tone.value}
-                      value={tone.value}
-                      className="cursor-pointer rounded-md transition-colors focus:bg-primary focus:text-primary-foreground data-[highlighted]:bg-primary data-[highlighted]:text-primary-foreground"
-                    >
+                    <SelectItem key={tone.value} value={tone.value}>
                       {tone.label}
                     </SelectItem>
                   ))}
@@ -211,17 +255,13 @@ function RouteComponent() {
                   }))
                 }
               >
-                <SelectTrigger className="h-10 w-full rounded-xl border border-border/50 bg-background/40 px-4 text-sm shadow-sm backdrop-blur-md transition-all hover:border-primary hover:bg-primary/5 focus:border-primary focus:ring-2 focus:ring-primary/20 data-[state=open]:border-primary data-[state=open]:bg-primary/5">
+                <SelectTrigger className="h-10 w-full rounded-xl border border-border/50 bg-background/40 px-4 text-sm shadow-sm">
                   <SelectValue />
                 </SelectTrigger>
 
-                <SelectContent className="glass border border-primary/20">
+                <SelectContent>
                   {LAYOUT_OPTIONS.map((layout) => (
-                    <SelectItem
-                      key={layout.value}
-                      value={layout.value}
-                      className="cursor-pointer rounded-md transition-colors focus:bg-primary focus:text-primary-foreground data-[highlighted]:bg-primary data-[highlighted]:text-primary-foreground"
-                    >
+                    <SelectItem key={layout.value} value={layout.value}>
                       {layout.label}
                     </SelectItem>
                   ))}
@@ -233,19 +273,23 @@ function RouteComponent() {
           {/* Generate Button */}
           <div className="mt-5 flex justify-end">
             <Button
-              onClick={() => {}}
+              onClick={handleCreate}
+              disabled={createMutation.isPending || !form.content.trim()}
               className="h-10 rounded-xl px-5 text-sm font-medium"
             >
               <Wand2 className="mr-2 size-4" />
-              Generate PPT
+
+              {createMutation.isPending ? 'Generating...' : 'Generate PPT'}
             </Button>
           </div>
         </div>
+
         {/* Templates */}
         <div className="mt-8">
-          <p className="text-center text-sm text-muted-foreground mb-3">
+          <p className="mb-3 text-center text-sm text-muted-foreground">
             Try a template
           </p>
+
           <div className="flex flex-wrap justify-center gap-2">
             {PRESENTATION_TEMPLATES.map((template) => (
               <button
@@ -260,7 +304,7 @@ function RouteComponent() {
                     layout: template.layout,
                   })
                 }}
-                className="px-4 py-2 text-sm rounded-full border border-border/50 bg-card/50 text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-primary/5 transition-all"
+                className="rounded-full border border-border/50 bg-card/50 px-4 py-2 text-sm text-muted-foreground transition-all hover:border-primary/50 hover:bg-primary/5 hover:text-foreground"
               >
                 {template.label}
               </button>
