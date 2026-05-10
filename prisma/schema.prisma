@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -18,25 +13,24 @@ model Test {
 }
 
 model User {
-  id            String    @id
+  id            String         @id
   name          String
-  email         String
-  emailVerified Boolean   @default(false)
+  email         String         @unique
+  emailVerified Boolean        @default(false)
   image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  sessions      Session[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   accounts      Account[]
   presentations Presentation[]
+  sessions      Session[]
 
-  @@unique([email])
   @@map("user")
 }
 
 model Session {
   id        String   @id
   expiresAt DateTime
-  token     String
+  token     String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   ipAddress String?
@@ -44,7 +38,6 @@ model Session {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([token])
   @@index([userId])
   @@map("session")
 }
@@ -54,7 +47,6 @@ model Account {
   accountId             String
   providerId            String
   userId                String
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   accessToken           String?
   refreshToken          String?
   idToken               String?
@@ -64,6 +56,7 @@ model Account {
   password              String?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("account")
@@ -81,44 +74,45 @@ model Verification {
   @@map("verification")
 }
 
+model Presentation {
+  id         String             @id @default(cuid())
+  userId     String
+  title      String
+  prompt     String
+  slideCount Int
+  style      String
+  tone       String
+  layout     String
+  status     PresentationStatus @default(DRAFT)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slides     Slide[]
+
+  @@index([userId])
+  @@map("presentation")
+}
+
+model Slide {
+  id             String       @id @default(cuid())
+  presentationId String
+  order          Int
+  title          String
+  content        String
+  notes          String?
+  imageUrl       String?
+  imagePrompt    String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  presentation   Presentation @relation(fields: [presentationId], references: [id], onDelete: Cascade)
+
+  @@index([presentationId])
+  @@map("slide")
+}
+
 enum PresentationStatus {
   DRAFT
   GENERATING
   COMPLETED
   FAILED
 }
-
-model Presentation{
-  id String @id @default(cuid())
-  userId String
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title String
-  prompt String @db.Text
-  slideCount Int
-  style String
-  tone String
-  layout String
-  status PresentationStatus @default(DRAFT)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  slides Slide[]
-  @@index([userId])
-  @@map("presentation")
-}
-
-model Slide{
-  id String @id @default(cuid())
-  presentationId String
-  presentation Presentation @relation(fields: [presentationId], references: [id], onDelete: Cascade)
-  order Int
-  title String
-  content String @db.Text
-  notes String? @db.Text
-  imageUrl String?
-  imagePrompt String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  @@index([presentationId])
-  @@map("slide")
-}
-
