@@ -88,6 +88,7 @@ export function usePresentationDetail(
     mutationFn: () => regeneratePresentation({ data: { id: presentationId } }),
     onSuccess: () => {
       toast.success('Regenerating slides…')
+      queryClient.invalidateQueries({ queryKey: presentationQueryKeys.list() })
       queryClient.invalidateQueries({
         queryKey: presentationQueryKeys.detail(presentationId),
       })

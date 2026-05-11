@@ -89,11 +89,7 @@ function RouteComponent() {
     },
 
     onSuccess: async (data) => {
-      console.log('Presentation response:', data)
-
       if (!data?.id) {
-        console.error('Invalid presentation response:', data)
-
         toast.error('Failed to create presentation')
 
         return
@@ -103,6 +99,9 @@ function RouteComponent() {
 
       await queryClient.invalidateQueries({
         queryKey: presentationQueryKeys.list(),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: presentationQueryKeys.detail(data.id),
       })
 
       navigate({
@@ -114,7 +113,7 @@ function RouteComponent() {
     },
 
     onError: (error) => {
-      console.error('Presentation creation failed:', error)
+      console.error('Presentation creation failed', error)
 
       toast.error('Could not create presentation. Please try again.')
     },

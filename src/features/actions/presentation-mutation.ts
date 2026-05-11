@@ -35,16 +35,28 @@ export const createPresentation = createServerFn({
         style: data.style,
         tone: data.tone,
         layout: data.layout,
-        status: PresentationStatus.COMPLETED,
+        status: PresentationStatus.GENERATING,
       },
     })
-    await inngest.send({
-      name: 'presentation/generate',
-      data: {
+    try {
+      await inngest.send({
+        name: 'presentation/generate',
+        data: {
+          presentationId: presentation.id,
+        },
+      })
+      return presentation
+    } catch (error) {
+      console.error('Failed to publish presentation/generate event', {
         presentationId: presentation.id,
-      },
-    })
-    return presentation
+        error,
+      })
+      await prisma.presentation.update({
+        where: { id: presentation.id },
+        data: { status: PresentationStatus.FAILED },
+      })
+      throw error
+    }
   })
 
 export const updatePresentation = createServerFn({ method: 'POST' })
@@ -109,6 +121,24 @@ export const regeneratePresentation = createServerFn({
         status: PresentationStatus.GENERATING,
       },
     })
+    try {
+      await inngest.send({
+        name: 'presentation/generate',
+        data: {
+          presentationId: data.id,
+        },
+      })
+    } catch (error) {
+      console.error('Failed to publish presentation/generate event', {
+        presentationId: data.id,
+        error,
+      })
+      await prisma.presentation.update({
+        where: { id: data.id },
+        data: { status: PresentationStatus.FAILED },
+      })
+      throw error
+    }
 
     return {
       ok: true as const,

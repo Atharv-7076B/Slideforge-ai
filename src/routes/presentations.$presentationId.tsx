@@ -1,3 +1,19 @@
+import { getSession } from '#/lib/auth.functions'
+
+import {
+  LAYOUT_OPTIONS,
+  SLIDE_STYLES,
+  TONE_OPTIONS,
+} from '#/features/constant/presentation-options'
+
+import { presentationThumbnailUrl } from '#/features/utils'
+
+import { usePresentationDetail } from '#/features/presentation/hooks/usePresentation-detail'
+
+import { GenerationStatus } from '#/features/components/generation-status'
+import { SlideCard } from '#/features/components/slide-card'
+import { SlideshowModal } from '#/features/components/slideshow-model' 
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,16 +29,16 @@ import {
 import { Button } from '#/components/ui/button'
 import { Label } from '#/components/ui/label'
 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '#/components/ui/select'
+
 import { Slider } from '#/components/ui/slider'
 import { Textarea } from '#/components/ui/textarea'
-
-import { GenerationStatus } from '#/features/components/generation-status'
-
-import { usePresentationDetail } from '#/features/presentation/hooks/usePresentation-detail'
-
-import { presentationThumbnailUrl } from '#/features/utils'
-
-import { getSession } from '#/lib/auth.functions'
 
 import {
   createFileRoute,
@@ -43,7 +59,10 @@ import {
   Trash2,
 } from 'lucide-react'
 
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
+
+import { toast } from 'sonner'
+import { useFullscreen } from '#/features/presentation/hooks/use-fullscreen'
 
 export const Route = createFileRoute('/presentations/$presentationId')({
   beforeLoad: async ({ location }) => {
@@ -57,12 +76,16 @@ export const Route = createFileRoute('/presentations/$presentationId')({
         },
       })
     }
+
+    return {
+      user: session.user,
+    }
   },
 
-  component: PresentationPage,
+  component: PresentationDetailPage,
 })
 
-function PresentationPage() {
+function PresentationDetailPage() {
   const { presentationId } = Route.useParams()
 
   const navigate = useNavigate()
@@ -71,13 +94,14 @@ function PresentationPage() {
 
   const [showSettings, setShowSettings] = useState(false)
 
-  const [isExporting] = useState(false)
+  const [showSlideshow, setShowSlideshow] = useState(false)
 
-  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
+  const [failedImageUrls, setFailedImageUrls] = useState<Record<string, true>>({})
 
-  const toggleFullscreen = () => {
-    setIsFullscreen((prev) => !prev)
-  }
+  const {isFullscreen, toggleFullscreen} = useFullscreen('slide-preview-container')
+
+  
 
   const {
     query,
@@ -92,11 +116,27 @@ function PresentationPage() {
     onDeleted: () => navigate({ to: '/' }),
   })
 
+  const handleExport = useCallback(async () => {
+    try {
+      setIsExporting(true)
+
+      toast.success('Export started')
+
+      setTimeout(() => {
+        setIsExporting(false)
+      }, 1200)
+    } catch {
+      toast.error('Export failed')
+
+      setIsExporting(false)
+    }
+  }, [])
+
   if (query.isPending) {
     return (
-      <main className="min-h-screen px-4 pt-24 pb-12">
-        <div className="mx-auto max-w-6xl text-muted-foreground">
-          Loading presentation…
+      <main className="min-h-screen pt-24 pb-12 px-4">
+        <div className="max-w-6xl mx-auto text-muted-foreground">
+          Loading presentation...
         </div>
       </main>
     )
@@ -106,8 +146,8 @@ function PresentationPage() {
     const error = query.error
 
     return (
-      <main className="min-h-screen px-4 pt-24 pb-12">
-        <div className="mx-auto max-w-6xl space-y-4">
+      <main className="min-h-screen pt-24 pb-12 px-4">
+        <div className="max-w-6xl mx-auto space-y-4">
           <p className="text-destructive">
             {error instanceof Error ? error.message : 'Something went wrong'}
           </p>
@@ -129,17 +169,21 @@ function PresentationPage() {
   const thumb = presentationThumbnailUrl(data.id)
 
   const activeSlide = slides.at(activeSlideIndex)
+  const activeSlideImageUrl =
+    activeSlide?.imageUrl && !failedImageUrls[activeSlide.imageUrl]
+      ? activeSlide.imageUrl
+      : null
 
   return (
-    <main className="min-h-screen px-4 pt-24 pb-12">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <main className="min-h-screen pt-24 pb-12 px-4">
+      <div className="max-w-6xl mx-auto space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Button
               asChild
               variant="ghost"
               size="sm"
-              className="gap-1 rounded-xl"
+              className="rounded-xl gap-1"
             >
               <Link to="/">
                 <ArrowLeft className="size-4" />
@@ -151,9 +195,9 @@ function PresentationPage() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-6 lg:flex-row">
+        <div className="flex flex-col lg:flex-row gap-6">
           <div className="flex-1 space-y-4">
-            <div className="glass flex items-center gap-4 rounded-2xl p-4">
+            <div className="glass rounded-2xl p-4 flex items-center gap-4">
               <img
                 src={thumb}
                 alt=""
@@ -162,8 +206,8 @@ function PresentationPage() {
                 className="rounded-xl border border-border/50 bg-background/30"
               />
 
-              <div className="min-w-0 flex-1">
-                <h1 className="truncate font-semibold">{data.title}</h1>
+              <div className="flex-1 min-w-0">
+                <h1 className="font-semibold truncate">{data.title}</h1>
 
                 <p className="text-sm text-muted-foreground">
                   {slides.length} slides
@@ -176,8 +220,8 @@ function PresentationPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="gap-1 rounded-xl"
-                      onClick={() => {}}
+                      className="rounded-xl gap-1"
+                      onClick={() => setShowSlideshow(true)}
                     >
                       <Play className="size-4" />
 
@@ -187,8 +231,8 @@ function PresentationPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="gap-1 rounded-xl"
-                      onClick={() => {}}
+                      className="rounded-xl gap-1"
+                      onClick={handleExport}
                       disabled={isExporting}
                     >
                       <Download className="size-4" />
@@ -203,7 +247,7 @@ function PresentationPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="gap-1 rounded-xl"
+                  className="rounded-xl gap-1"
                   disabled={regenerateMut.isPending || isGenerating}
                   onClick={() => regenerateMut.mutate()}
                 >
@@ -228,7 +272,7 @@ function PresentationPage() {
             </div>
 
             {showSettings && (
-              <div className="glass space-y-4 rounded-2xl p-6">
+              <div className="glass rounded-2xl p-6 space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="pres-title" className="text-sm font-medium">
                     Title
@@ -258,11 +302,11 @@ function PresentationPage() {
                         prompt: e.target.value,
                       }))
                     }
-                    className="min-h-[120px] resize-y rounded-xl border-border/50 bg-background/50 text-sm"
+                    className="min-h-[120px] text-sm bg-background/50 border-border/50 rounded-xl resize-y"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="space-y-2">
                     <Label className="text-sm font-medium">
                       Slides: {form.slideCount}
@@ -282,6 +326,86 @@ function PresentationPage() {
                       className="py-2"
                     />
                   </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Style</Label>
+
+                    <Select
+                      value={form.style}
+                      onValueChange={(value) =>
+                        setForm((s) => ({
+                          ...s,
+                          style:
+                            value as (typeof SLIDE_STYLES)[number]['value'],
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="bg-background/50 border-border/50 rounded-xl">
+                        <SelectValue />
+                      </SelectTrigger>
+
+                      <SelectContent className="glass">
+                        {SLIDE_STYLES.map((style) => (
+                          <SelectItem key={style.value} value={style.value}>
+                            {style.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Tone</Label>
+
+                    <Select
+                      value={form.tone}
+                      onValueChange={(value) =>
+                        setForm((s) => ({
+                          ...s,
+                          tone: value as (typeof TONE_OPTIONS)[number]['value'],
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="bg-background/50 border-border/50 rounded-xl">
+                        <SelectValue />
+                      </SelectTrigger>
+
+                      <SelectContent className="glass">
+                        {TONE_OPTIONS.map((tone) => (
+                          <SelectItem key={tone.value} value={tone.value}>
+                            {tone.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Layout</Label>
+
+                    <Select
+                      value={form.layout}
+                      onValueChange={(value) =>
+                        setForm((s) => ({
+                          ...s,
+                          layout:
+                            value as (typeof LAYOUT_OPTIONS)[number]['value'],
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="bg-background/50 border-border/50 rounded-xl">
+                        <SelectValue />
+                      </SelectTrigger>
+
+                      <SelectContent className="glass">
+                        {LAYOUT_OPTIONS.map((layout) => (
+                          <SelectItem key={layout.value} value={layout.value}>
+                            {layout.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap justify-between gap-3 pt-2">
@@ -291,7 +415,7 @@ function PresentationPage() {
                         type="button"
                         variant="destructive"
                         size="sm"
-                        className="gap-2 rounded-xl"
+                        className="rounded-xl gap-2"
                         disabled={deleteMut.isPending}
                       >
                         <Trash2 className="size-4" />
@@ -328,8 +452,12 @@ function PresentationPage() {
                   <Button
                     type="button"
                     size="sm"
-                    className="gap-2 rounded-xl"
-                    disabled={updateMut.isPending}
+                    className="rounded-xl gap-2"
+                    disabled={
+                      updateMut.isPending ||
+                      !form.title.trim() ||
+                      !form.prompt.trim()
+                    }
                     onClick={() => updateMut.mutate()}
                   >
                     <Save className="size-4" />
@@ -342,17 +470,48 @@ function PresentationPage() {
 
             {activeSlide && (
               <div className="space-y-3">
-                <div id="slide-preview-container" className="group relative">
-                  <SlidePreview
-                    slide={activeSlide}
-                    isFullscreen={isFullscreen}
-                  />
+                <div id="slide-preview-container" className="relative group">
+                  <div
+                    className={`glass rounded-2xl p-8 transition-all ${
+                      isFullscreen ? 'fixed inset-4 z-50 overflow-auto' : ''
+                    }`}
+                  >
+                    <div className="space-y-5">
+                      <h2 className="text-3xl font-bold">
+                        {activeSlide.title}
+                      </h2>
+
+                      <p className="whitespace-pre-wrap leading-relaxed text-muted-foreground">
+                        {activeSlide.content}
+                      </p>
+
+                      {activeSlideImageUrl && (
+                        <img
+                          src={activeSlideImageUrl}
+                          alt={activeSlide.title}
+                          className="w-full rounded-xl border border-border/50"
+                          loading="lazy"
+                          onError={() =>
+                            setFailedImageUrls((prev) => ({
+                              ...prev,
+                              [activeSlideImageUrl]: true,
+                            }))
+                          }
+                        />
+                      )}
+                      {!activeSlideImageUrl && (
+                        <div className="w-full rounded-xl border border-border/50 bg-muted/40 px-4 py-8 text-center text-sm text-muted-foreground">
+                          Image unavailable
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
                   <Button
                     variant="secondary"
                     size="icon"
-                    className={`absolute top-3 right-3 rounded-lg opacity-0 transition-opacity group-hover:opacity-100 ${
-                      isFullscreen ? 'opacity-100' : ''
+                    className={`absolute top-3 right-3 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity ${
+                      isFullscreen ? 'opacity-100 z-[60]' : ''
                     }`}
                     onClick={toggleFullscreen}
                   >
@@ -364,7 +523,7 @@ function PresentationPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="gap-1 rounded-xl"
+                    className="rounded-xl gap-1"
                     disabled={activeSlideIndex === 0}
                     onClick={() =>
                       setActiveSlideIndex((i) => Math.max(0, i - 1))
@@ -381,7 +540,7 @@ function PresentationPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="gap-1 rounded-xl"
+                    className="rounded-xl gap-1"
                     disabled={activeSlideIndex >= slides.length - 1}
                     onClick={() =>
                       setActiveSlideIndex((i) =>
@@ -395,31 +554,67 @@ function PresentationPage() {
                 </div>
               </div>
             )}
+
+            {slides.length === 0 && !isGenerating && (
+              <div className="glass rounded-2xl p-12 text-center">
+                <p className="text-muted-foreground mb-4">
+                  No slides yet. Click regenerate to create slides.
+                </p>
+
+                <Button
+                  className="rounded-xl gap-2"
+                  onClick={() => regenerateMut.mutate()}
+                  disabled={regenerateMut.isPending}
+                >
+                  <RefreshCw className="size-4" />
+                  Generate slides
+                </Button>
+              </div>
+            )}
+
+            {slides.length === 0 && isGenerating && (
+              <div className="glass rounded-2xl p-12 text-center">
+                <RefreshCw className="size-8 animate-spin mx-auto mb-4 text-primary" />
+
+                <p className="text-muted-foreground">
+                  Generating your presentation...
+                </p>
+
+                <p className="text-xs text-muted-foreground mt-1">
+                  This may take a minute
+                </p>
+              </div>
+            )}
           </div>
+
+          {slides.length > 0 && (
+            <aside className="lg:w-80 xl:w-96 flex flex-col">
+              <h2 className="font-medium text-sm px-2 pb-3 text-muted-foreground">
+                Slides
+              </h2>
+
+              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent pr-2 -mr-2 space-y-4 max-h-[calc(100vh-14rem)]">
+                {slides.map((slide, index) => (
+                  <SlideCard
+                    key={slide.id}
+                    slide={slide}
+                    isActive={index === activeSlideIndex}
+                    onClick={() => setActiveSlideIndex(index)}
+                  />
+                ))}
+              </div>
+            </aside>
+          )}
         </div>
       </div>
+
+      {showSlideshow && (
+        <SlideshowModal
+          slides={slides}
+          initialIndex={activeSlideIndex}
+          onClose={() => setShowSlideshow(false)}
+        />
+      )}
     </main>
-  )
-}
-
-function SlidePreview({
-  slide,
-  isFullscreen,
-}: {
-  slide: any
-  isFullscreen: boolean
-}) {
-  return (
-    <div
-      className={`glass rounded-2xl border border-border/50 bg-background/30 p-10 ${
-        isFullscreen ? 'fixed inset-0 z-50 m-0 rounded-none' : 'min-h-[500px]'
-      }`}
-    >
-      <h2 className="text-3xl font-bold">{slide?.title || 'Untitled Slide'}</h2>
-
-      <p className="mt-6 text-muted-foreground">
-        {slide?.content || 'No slide content available'}
-      </p>
-    </div>
   )
 }
