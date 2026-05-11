@@ -76,8 +76,8 @@ function RouteComponent() {
   })
 
   const createMutation = useMutation({
-    mutationFn: () =>
-      createPresentation({
+    mutationFn: async () => {
+      return await createPresentation({
         data: {
           prompt: form.content,
           slideCount: form.slideCount,
@@ -85,9 +85,20 @@ function RouteComponent() {
           tone: form.tone,
           layout: form.layout,
         },
-      }),
+      })
+    },
 
     onSuccess: async (data) => {
+      console.log('Presentation response:', data)
+
+      if (!data?.id) {
+        console.error('Invalid presentation response:', data)
+
+        toast.error('Failed to create presentation')
+
+        return
+      }
+
       toast.success('Presentation created successfully')
 
       await queryClient.invalidateQueries({
@@ -103,7 +114,7 @@ function RouteComponent() {
     },
 
     onError: (error) => {
-      console.error(error)
+      console.error('Presentation creation failed:', error)
 
       toast.error('Could not create presentation. Please try again.')
     },
@@ -112,10 +123,13 @@ function RouteComponent() {
   const handleCreate = () => {
     if (!form.content.trim()) {
       toast.error('Please enter the content first')
+
       return
     }
+
     createMutation.mutate()
   }
+
   return (
     <main className="min-h-screen px-4 pt-24 pb-16">
       <div className="mx-auto w-full max-w-5xl">
@@ -158,7 +172,7 @@ function RouteComponent() {
           <div className="my-5 border-t border-border/30" />
 
           {/* Controls */}
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-4 items-start">
+          <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-4">
             {/* Slides */}
             <div className="space-y-3">
               <Label className="text-sm font-medium text-foreground/80">

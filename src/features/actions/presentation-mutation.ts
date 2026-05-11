@@ -1,15 +1,20 @@
 import { createServerFn } from '@tanstack/react-start'
+
 import {
   createPresentationInputSchema,
   presentationIdInputSchema,
   updatePresentationInputSchema,
 } from '../types/schemas'
+
 import { authFnMiddleware } from '#/middleware/auth'
+
 import { prisma } from '#/lib/db'
+
 import { generateSlug } from 'random-word-slugs'
 
-import { PresentationStatus } from '#/generated/prisma/enums'
+import { PresentationStatus } from '@prisma/client'
 
+import { inngest } from '#/integrations/inngest/client'
 export const createPresentation = createServerFn({
   method: 'POST',
 })
@@ -18,6 +23,9 @@ export const createPresentation = createServerFn({
   .handler(async ({ data, context }) => {
     const userId = context?.session?.user?.id
 
+    if (!userId) {
+      throw new Error('Unauthorized')
+    }
     const presentation = await prisma.presentation.create({
       data: {
         userId,
@@ -30,7 +38,12 @@ export const createPresentation = createServerFn({
         status: PresentationStatus.COMPLETED,
       },
     })
-
+    await inngest.send({
+      name: 'presentation/generate',
+      data: {
+        presentationId: presentation.id,
+      },
+    })
     return presentation
   })
 
