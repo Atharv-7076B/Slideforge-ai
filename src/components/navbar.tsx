@@ -14,6 +14,7 @@ import {
 } from './ui/dropdown-menu'
 
 type Theme = 'light' | 'dark'
+
 function getInitialTheme(): Theme {
   if (typeof window === 'undefined') return 'dark'
   const stored = localStorage.getItem('theme')
@@ -27,10 +28,11 @@ export default function Navbar() {
   const router = useRouter()
   const { data: session, isPending } = authClient.useSession()
   const [theme, setTheme] = useState<Theme>('dark')
+
   useEffect(() => {
-    const initialTheme = getInitialTheme()
-    setTheme(initialTheme)
-    document.documentElement.classList.toggle('dark', initialTheme === 'dark')
+    const initial = getInitialTheme()
+    setTheme(initial)
+    document.documentElement.classList.toggle('dark', initial === 'dark')
   }, [])
 
   const toggleTheme = () => {
@@ -44,6 +46,7 @@ export default function Navbar() {
     await authClient.signOut()
     router.navigate({ to: '/login' })
   }
+
   return (
     <header className="fixed top-0 left-0 right-0 z-50">
       <nav className="mx-auto max-w-5xl px-4 py-3">
@@ -86,8 +89,8 @@ export default function Navbar() {
                   >
                     <Avatar className="size-9 border-2 border-primary/30">
                       <AvatarImage
-                        src={session?.user?.image ?? ''}
-                        alt={session?.user?.name ?? 'User'}
+                        src={session.user.image ?? ''}
+                        alt={session.user.name || 'User'}
                       />
                       <AvatarFallback className="bg-primary/10 text-primary font-medium">
                         {session.user.name ? (

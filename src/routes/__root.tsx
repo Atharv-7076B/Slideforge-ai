@@ -3,11 +3,12 @@ import {
   Outlet,
   Scripts,
   createRootRoute,
-  useRouterState,
 } from '@tanstack/react-router'
+
 import { QueryClientProvider } from '@tanstack/react-query'
 
 import appCss from '../styles.css?url'
+
 import { Toaster } from '#/components/ui/sonner'
 import Navbar from '#/components/navbar'
 import { queryClient } from '#/lib/query-client'
@@ -26,6 +27,7 @@ export const Route = createRootRoute({
         title: 'TanStack Start Starter',
       },
     ],
+
     links: [
       {
         rel: 'stylesheet',
@@ -33,21 +35,28 @@ export const Route = createRootRoute({
       },
     ],
   }),
+
   component: RootLayout,
   shellComponent: RootDocument,
+
   errorComponent: RootErrorComponent,
   notFoundComponent: RootNotFoundComponent,
 })
+
 function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="min-h-svh">
+      <div className="min-h-svh bg-background text-foreground">
         <Navbar />
-        <Outlet />
+
+        <main>
+          <Outlet />
+        </main>
       </div>
     </QueryClientProvider>
   )
 }
+
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
@@ -55,24 +64,27 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <script />
         <HeadContent />
       </head>
-      <body className="font-sans antialiased bg-background text-foreground selection-bg-primary/20">
+
+      <body className="font-sans antialiased selection:bg-primary/20">
         {children}
+
         <Toaster />
+
         <Scripts />
       </body>
     </html>
   )
 }
 
-function RootErrorComponent() {
-  const routerState = useRouterState()
-  const error = routerState.location.state?.error
-
+function RootErrorComponent({ error }: { error: Error }) {
   return (
-    <div className="min-h-svh flex items-center justify-center p-4">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold mb-2">Error</h1>
-        <p className="text-muted-foreground mb-4">
+    <div className="min-h-svh flex items-center justify-center p-6">
+      <div className="max-w-md text-center space-y-4">
+        <h1 className="text-3xl font-bold tracking-tight">
+          Something went wrong
+        </h1>
+
+        <p className="text-muted-foreground break-words">
           {error?.message || 'An unexpected error occurred'}
         </p>
       </div>
@@ -82,10 +94,13 @@ function RootErrorComponent() {
 
 function RootNotFoundComponent() {
   return (
-    <div className="min-h-svh flex items-center justify-center p-4">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold mb-2">404</h1>
-        <p className="text-muted-foreground">Page not found</p>
+    <div className="min-h-svh flex items-center justify-center p-6">
+      <div className="text-center space-y-4">
+        <h1 className="text-5xl font-bold">404</h1>
+
+        <p className="text-muted-foreground">
+          The page you are looking for does not exist.
+        </p>
       </div>
     </div>
   )

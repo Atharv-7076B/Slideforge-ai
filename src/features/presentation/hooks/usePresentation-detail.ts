@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type {
@@ -13,7 +13,6 @@ import {
   regeneratePresentation,
   updatePresentation,
 } from '#/features/actions/presentation-mutation'
-import { queryKeys } from 'inngest'
 import { getPresentationWithSLiedes } from '#/features/actions/presentation-query'
 
 type SettingsForm = {
@@ -54,9 +53,9 @@ export function usePresentationDetail(
       title: query.data.title,
       prompt: query.data.prompt,
       slideCount: query.data.slideCount,
-      style: query.data.style,
-      tone: query.data.tone,
-      layout: query.data.layout,
+      style: query.data.style as SlideStyle,
+      tone: query.data.tone as SlideTone,
+      layout: query.data.layout as SlideLayout,
     })
   }, [query.data])
 

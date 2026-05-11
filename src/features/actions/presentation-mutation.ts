@@ -88,7 +88,7 @@ export const regeneratePresentation = createServerFn({
       throw new Error('Presentation not found')
     }
 
-    const presentation = await prisma.presentation.update({
+    await prisma.presentation.update({
       where: {
         id: data.id,
       },

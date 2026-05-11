@@ -3,8 +3,9 @@ import { createFileRoute, Link, redirect } from '@tanstack/react-router'
 import { getSession } from '#/lib/auth.functions'
 import { Presentation } from 'lucide-react'
 import { z } from 'zod'
+
 export const Route = createFileRoute('/_auth/login')({
-  beforeLoad: async ({ location }) => {
+  beforeLoad: async () => {
     const session = await getSession()
     if (session) {
       throw redirect({
@@ -19,7 +20,8 @@ export const Route = createFileRoute('/_auth/login')({
 })
 
 function LoginPage() {
-  const { redirect } = Route.useSearch()
+  const { redirect: redirectTo } = Route.useSearch()
+
   return (
     <div className="min-h-screen pt-24 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -42,7 +44,7 @@ function LoginPage() {
           </div>
 
           {/* Login form */}
-          <LoginForm redirectTo={redirect} />
+          <LoginForm redirectTo={redirectTo} />
         </div>
       </div>
     </div>

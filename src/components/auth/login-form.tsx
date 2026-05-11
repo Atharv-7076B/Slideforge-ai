@@ -1,4 +1,4 @@
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useRouter } from '@tanstack/react-router'
 import { Button } from '../ui/button'
 import { Separator } from '../ui/separator'
 import { useState } from 'react'
@@ -9,6 +9,7 @@ import { toInternalPath } from '#/lib/auth-redirect'
 
 export default function LoginForm({ redirectTo }: { redirectTo?: string }) {
   const navigate = useNavigate()
+  const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState<'github' | 'google' | null>(
     null,
   )
@@ -20,8 +21,13 @@ export default function LoginForm({ redirectTo }: { redirectTo?: string }) {
         fetchOptions: {
           onSuccess: () => {
             toast.success('Logged in successfully')
-            // const internalRedirect = toInternalPath
-            navigate({ to: '/' })
+            setIsSubmitting(null)
+            const next = toInternalPath(redirectTo) ?? '/'
+            if (next === '/' || next.startsWith('/login')) {
+              navigate({ to: '/' })
+            } else {
+              router.history.push(next)
+            }
           },
           onError: ({ error }) => {
             toast.error(error.message || 'Login Failed .Please try again')
