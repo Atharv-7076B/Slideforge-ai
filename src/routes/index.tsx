@@ -1,12 +1,17 @@
-import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
-
 import { getSession } from '#/lib/auth.functions'
+import {
+  LAYOUT_OPTIONS,
+  SLIDE_STYLES,
+  TONE_OPTIONS,
+} from '#/features/constant/presentation-options'
+import { PRESENTATION_TEMPLATES } from '#/features/constant/presentation-templates'
+import { PresentationListSection } from '#/features/components/presentation-list-section'
+import { presentationQueryKeys } from '#/features/presentation/hooks/query-keys'
+import { createPresentation } from '#/features/actions/presentation-mutation'
+import { listPresentations } from '#/features/actions/presentation-query'
 
-import { Textarea } from '#/components/ui/textarea'
-import { Label } from '#/components/ui/label'
-import { Slider } from '#/components/ui/slider'
 import { Button } from '#/components/ui/button'
+import { Label } from '#/components/ui/label'
 
 import {
   Select,
@@ -16,21 +21,15 @@ import {
   SelectValue,
 } from '#/components/ui/select'
 
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { Slider } from '#/components/ui/slider'
+import { Textarea } from '#/components/ui/textarea'
 
-import {
-  LAYOUT_OPTIONS,
-  SLIDE_STYLES,
-  TONE_OPTIONS,
-} from '#/features/constant/presentation-options'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { PRESENTATION_TEMPLATES } from '#/features/constant/presentation-templates'
+import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 
-import { createPresentation } from '#/features/actions/presentation-mutation'
-
-import { presentationQueryKeys } from '#/features/presentation/hooks/query-keys'
-
-import { Wand2 } from 'lucide-react'
+import { Sparkles, Wand2 } from 'lucide-react'
+import { useState } from 'react'
 import { toast } from 'sonner'
 
 type HomeFormState = {
@@ -59,13 +58,13 @@ export const Route = createFileRoute('/')({
     }
   },
 
-  component: RouteComponent,
+  component: HomePage,
 })
 
-function RouteComponent() {
-  const queryClient = useQueryClient()
-
+function HomePage() {
   const navigate = useNavigate()
+
+  const queryClient = useQueryClient()
 
   const [form, setForm] = useState<HomeFormState>({
     content: '',
@@ -75,77 +74,76 @@ function RouteComponent() {
     layout: 'balanced',
   })
 
-  const createMutation = useMutation({
-    mutationFn: async () => {
-      return await createPresentation({
+  const { data: presentations = [], isPending: listPending } = useQuery({
+    queryKey: presentationQueryKeys.list(),
+    queryFn: () => listPresentations(),
+  })
+
+  const createMut = useMutation({
+    mutationFn: () =>
+      createPresentation({
         data: {
-          prompt: form.content,
+          prompt: form.content.trim(),
           slideCount: form.slideCount,
           style: form.style,
           tone: form.tone,
           layout: form.layout,
         },
-      })
-    },
+      }),
 
-    onSuccess: async (data) => {
-      if (!data?.id) {
-        toast.error('Failed to create presentation')
-
-        return
-      }
-
+    onSuccess: async (presentation) => {
       toast.success('Presentation created successfully')
 
       await queryClient.invalidateQueries({
         queryKey: presentationQueryKeys.list(),
       })
-      await queryClient.invalidateQueries({
-        queryKey: presentationQueryKeys.detail(data.id),
-      })
 
       navigate({
         to: '/presentations/$presentationId',
         params: {
-          presentationId: data.id,
+          presentationId: presentation.id,
         },
       })
     },
 
     onError: (error) => {
-      console.error('Presentation creation failed', error)
+      console.error(error)
 
-      toast.error('Could not create presentation. Please try again.')
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Could not create presentation',
+      )
     },
   })
 
-  const handleCreate = () => {
+  const handleGenerate = () => {
     if (!form.content.trim()) {
-      toast.error('Please enter the content first')
+      toast.error('Please enter your content first')
 
       return
     }
 
-    createMutation.mutate()
+    createMut.mutate()
   }
 
   return (
-    <main className="min-h-screen px-4 pt-24 pb-16">
-      <div className="mx-auto w-full max-w-5xl">
+    <main className="min-h-screen px-4 pt-24 pb-12">
+      <div className="mx-auto max-w-4xl">
         {/* Header */}
-        <div className="mb-10 space-y-3 text-center">
-          <h1 className="text-4xl font-extrabold tracking-tight leading-tight md:text-5xl">
+        <div className="mb-10 text-center">
+          <h1 className="mb-3 text-4xl font-bold md:text-5xl">
             What do you want to{' '}
             <span className="text-gradient-peach">create?</span>
           </h1>
 
-          <p className="text-base text-muted-foreground md:text-lg">
+          <p className="text-lg text-muted-foreground">
             Enter your content and we'll generate a beautiful presentation
           </p>
         </div>
 
-        {/* Form Card */}
-        <div className="mx-auto w-full max-w-[860px] rounded-3xl border border-border/40 bg-card/60 p-5 shadow-2xl backdrop-blur-xl">
+        {/* Main Input Card */}
+        <div className="glass space-y-6 rounded-3xl p-6 md:p-8">
           {/* Textarea */}
           <div className="space-y-2">
             <Textarea
@@ -157,49 +155,42 @@ function RouteComponent() {
                   content: e.target.value,
                 }))
               }
-              className="h-[190px] w-full resize-none overflow-y-auto rounded-2xl border-0 bg-background/30 p-4 text-sm outline-none placeholder:text-muted-foreground/50 focus-visible:ring-0 focus-visible:ring-offset-0"
+              className="h-[200px] min-h-[200px] max-h-[200px] resize-none overflow-y-auto rounded-2xl border-border/50 bg-background/50 text-base focus-visible:ring-primary/30"
             />
 
-            <div className="flex items-center justify-between px-1 text-xs text-muted-foreground/60">
+            <div className="flex justify-between px-1 text-xs text-muted-foreground">
               <span>{form.content.length.toLocaleString()} characters</span>
 
               <span>Markdown supported</span>
             </div>
           </div>
 
-          {/* Divider */}
-          <div className="my-5 border-t border-border/30" />
-
           {/* Controls */}
-          <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {/* Slides */}
-            <div className="space-y-3">
-              <Label className="text-sm font-medium text-foreground/80">
+            <div className="space-y-2.5">
+              <Label className="text-sm font-medium">
                 Slides: {form.slideCount}
               </Label>
 
-              <div className="flex h-10 items-center">
-                <Slider
-                  value={[form.slideCount]}
-                  onValueChange={([v]) =>
-                    setForm((s) => ({
-                      ...s,
-                      slideCount: v,
-                    }))
-                  }
-                  min={3}
-                  max={20}
-                  step={1}
-                  className="w-full"
-                />
-              </div>
+              <Slider
+                value={[form.slideCount]}
+                onValueChange={([v]) =>
+                  setForm((s) => ({
+                    ...s,
+                    slideCount: v,
+                  }))
+                }
+                min={3}
+                max={20}
+                step={1}
+                className="py-2"
+              />
             </div>
 
             {/* Style */}
-            <div className="space-y-3">
-              <Label className="text-sm font-medium text-foreground/80">
-                Style
-              </Label>
+            <div className="space-y-2.5">
+              <Label className="text-sm font-medium">Style</Label>
 
               <Select
                 value={form.style}
@@ -210,11 +201,11 @@ function RouteComponent() {
                   }))
                 }
               >
-                <SelectTrigger className="h-10 w-full rounded-xl border border-border/50 bg-background/40 px-4 text-sm shadow-sm">
+                <SelectTrigger className="rounded-xl border-border/50 bg-background/50">
                   <SelectValue />
                 </SelectTrigger>
 
-                <SelectContent>
+                <SelectContent className="glass">
                   {SLIDE_STYLES.map((style) => (
                     <SelectItem key={style.value} value={style.value}>
                       {style.label}
@@ -225,10 +216,8 @@ function RouteComponent() {
             </div>
 
             {/* Tone */}
-            <div className="space-y-3">
-              <Label className="text-sm font-medium text-foreground/80">
-                Tone
-              </Label>
+            <div className="space-y-2.5">
+              <Label className="text-sm font-medium">Tone</Label>
 
               <Select
                 value={form.tone}
@@ -239,11 +228,11 @@ function RouteComponent() {
                   }))
                 }
               >
-                <SelectTrigger className="h-10 w-full rounded-xl border border-border/50 bg-background/40 px-4 text-sm shadow-sm">
+                <SelectTrigger className="rounded-xl border-border/50 bg-background/50">
                   <SelectValue />
                 </SelectTrigger>
 
-                <SelectContent>
+                <SelectContent className="glass">
                   {TONE_OPTIONS.map((tone) => (
                     <SelectItem key={tone.value} value={tone.value}>
                       {tone.label}
@@ -254,10 +243,8 @@ function RouteComponent() {
             </div>
 
             {/* Layout */}
-            <div className="space-y-3">
-              <Label className="text-sm font-medium text-foreground/80">
-                Layout
-              </Label>
+            <div className="space-y-2.5">
+              <Label className="text-sm font-medium">Layout</Label>
 
               <Select
                 value={form.layout}
@@ -268,11 +255,11 @@ function RouteComponent() {
                   }))
                 }
               >
-                <SelectTrigger className="h-10 w-full rounded-xl border border-border/50 bg-background/40 px-4 text-sm shadow-sm">
+                <SelectTrigger className="rounded-xl border-border/50 bg-background/50">
                   <SelectValue />
                 </SelectTrigger>
 
-                <SelectContent>
+                <SelectContent className="glass">
                   {LAYOUT_OPTIONS.map((layout) => (
                     <SelectItem key={layout.value} value={layout.value}>
                       {layout.label}
@@ -284,15 +271,24 @@ function RouteComponent() {
           </div>
 
           {/* Generate Button */}
-          <div className="mt-5 flex justify-end">
+          <div className="flex justify-end pt-2">
             <Button
-              onClick={handleCreate}
-              disabled={createMutation.isPending || !form.content.trim()}
-              className="h-10 rounded-xl px-5 text-sm font-medium"
+              size="lg"
+              onClick={handleGenerate}
+              disabled={createMut.isPending || !form.content.trim()}
+              className="gap-2 rounded-xl px-8 font-semibold"
             >
-              <Wand2 className="mr-2 size-4" />
-
-              {createMutation.isPending ? 'Generating...' : 'Generate PPT'}
+              {createMut.isPending ? (
+                <>
+                  <Sparkles className="size-5 animate-pulse" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Wand2 className="size-5" />
+                  Generate PPT
+                </>
+              )}
             </Button>
           </div>
         </div>
@@ -323,6 +319,14 @@ function RouteComponent() {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Presentations */}
+        <div className="mt-14">
+          <PresentationListSection
+            presentations={presentations}
+            isPending={listPending}
+          />
         </div>
       </div>
     </main>

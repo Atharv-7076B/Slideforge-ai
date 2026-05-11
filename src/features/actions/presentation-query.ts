@@ -21,3 +21,13 @@ export const getPresentationWithSLiedes = createServerFn({ method: 'GET' })
     })
     return row
   })
+
+  export const listPresentations = createServerFn({ method: 'GET' })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const userId = context?.session?.user?.id
+    return await prisma.presentation.findMany({
+      where: {userId},
+      orderBy: { updatedAt: 'desc' },
+    })
+  })

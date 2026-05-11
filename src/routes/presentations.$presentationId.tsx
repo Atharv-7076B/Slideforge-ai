@@ -12,7 +12,7 @@ import { usePresentationDetail } from '#/features/presentation/hooks/usePresenta
 
 import { GenerationStatus } from '#/features/components/generation-status'
 import { SlideCard } from '#/features/components/slide-card'
-import { SlideshowModal } from '#/features/components/slideshow-model' 
+import { SlideshowModal } from '#/features/components/slideshow-model'
 
 import {
   AlertDialog,
@@ -97,11 +97,13 @@ function PresentationDetailPage() {
   const [showSlideshow, setShowSlideshow] = useState(false)
 
   const [isExporting, setIsExporting] = useState(false)
-  const [failedImageUrls, setFailedImageUrls] = useState<Record<string, true>>({})
+  const [failedImageUrls, setFailedImageUrls] = useState<Record<string, true>>(
+    {},
+  )
 
-  const {isFullscreen, toggleFullscreen} = useFullscreen('slide-preview-container')
-
-  
+  const { isFullscreen, toggleFullscreen } = useFullscreen(
+    'slide-preview-container',
+  )
 
   const {
     query,

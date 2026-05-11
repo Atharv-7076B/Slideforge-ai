@@ -1,0 +1,1 @@
+export type { PresentationModel as Presentation } from './presentation.types'
