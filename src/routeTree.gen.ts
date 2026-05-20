@@ -13,6 +13,7 @@ import { Route as AboutRouteImport } from './routes/about'
 import { Route as AuthRouteRouteImport } from './routes/_auth/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PresentationsPresentationIdRouteImport } from './routes/presentations.$presentationId'
+import { Route as ApiTestImageRouteImport } from './routes/api/test-image'
 import { Route as ApiInngestRouteImport } from './routes/api/inngest'
 import { Route as AuthLoginRouteImport } from './routes/_auth/login'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
@@ -37,6 +38,11 @@ const PresentationsPresentationIdRoute =
     path: '/presentations/$presentationId',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiTestImageRoute = ApiTestImageRouteImport.update({
+  id: '/api/test-image',
+  path: '/api/test-image',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiInngestRoute = ApiInngestRouteImport.update({
   id: '/api/inngest',
   path: '/api/inngest',
@@ -58,6 +64,7 @@ export interface FileRoutesByFullPath {
   '/about': typeof AboutRoute
   '/login': typeof AuthLoginRoute
   '/api/inngest': typeof ApiInngestRoute
+  '/api/test-image': typeof ApiTestImageRoute
   '/presentations/$presentationId': typeof PresentationsPresentationIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
@@ -66,6 +73,7 @@ export interface FileRoutesByTo {
   '/about': typeof AboutRoute
   '/login': typeof AuthLoginRoute
   '/api/inngest': typeof ApiInngestRoute
+  '/api/test-image': typeof ApiTestImageRoute
   '/presentations/$presentationId': typeof PresentationsPresentationIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
@@ -76,6 +84,7 @@ export interface FileRoutesById {
   '/about': typeof AboutRoute
   '/_auth/login': typeof AuthLoginRoute
   '/api/inngest': typeof ApiInngestRoute
+  '/api/test-image': typeof ApiTestImageRoute
   '/presentations/$presentationId': typeof PresentationsPresentationIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
@@ -86,6 +95,7 @@ export interface FileRouteTypes {
     | '/about'
     | '/login'
     | '/api/inngest'
+    | '/api/test-image'
     | '/presentations/$presentationId'
     | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
@@ -94,6 +104,7 @@ export interface FileRouteTypes {
     | '/about'
     | '/login'
     | '/api/inngest'
+    | '/api/test-image'
     | '/presentations/$presentationId'
     | '/api/auth/$'
   id:
@@ -103,6 +114,7 @@ export interface FileRouteTypes {
     | '/about'
     | '/_auth/login'
     | '/api/inngest'
+    | '/api/test-image'
     | '/presentations/$presentationId'
     | '/api/auth/$'
   fileRoutesById: FileRoutesById
@@ -112,6 +124,7 @@ export interface RootRouteChildren {
   AuthRouteRoute: typeof AuthRouteRouteWithChildren
   AboutRoute: typeof AboutRoute
   ApiInngestRoute: typeof ApiInngestRoute
+  ApiTestImageRoute: typeof ApiTestImageRoute
   PresentationsPresentationIdRoute: typeof PresentationsPresentationIdRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
@@ -144,6 +157,13 @@ declare module '@tanstack/react-router' {
       path: '/presentations/$presentationId'
       fullPath: '/presentations/$presentationId'
       preLoaderRoute: typeof PresentationsPresentationIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/test-image': {
+      id: '/api/test-image'
+      path: '/api/test-image'
+      fullPath: '/api/test-image'
+      preLoaderRoute: typeof ApiTestImageRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/inngest': {
@@ -187,6 +207,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRouteRoute: AuthRouteRouteWithChildren,
   AboutRoute: AboutRoute,
   ApiInngestRoute: ApiInngestRoute,
+  ApiTestImageRoute: ApiTestImageRoute,
   PresentationsPresentationIdRoute: PresentationsPresentationIdRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
