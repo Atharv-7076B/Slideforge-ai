@@ -5,6 +5,11 @@ export const presentationStyleSchema = z.enum([
   'professional',
   'creative',
   'bold',
+  'futuristic',
+  'dark-mode',
+  'corporate',
+  'startup-pitch',
+  'education',
 ])
 
 export const presentationToneSchema = z.enum([

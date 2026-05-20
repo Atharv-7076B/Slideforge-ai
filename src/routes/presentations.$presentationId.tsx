@@ -13,6 +13,9 @@ import { usePresentationDetail } from '#/features/presentation/hooks/usePresenta
 import { GenerationStatus } from '#/features/components/generation-status'
 import { SlideCard } from '#/features/components/slide-card'
 import { SlideshowModal } from '#/features/components/slideshow-model'
+import { SlidePreview } from '#/features/components/slide-preview'
+import { getPlaceholderImage } from '#/features/presentation/utils/placeholder-mapper'
+import { exportPresentationToPPTX } from '#/features/presentation/utils/export-pptx'
 
 import {
   AlertDialog,
@@ -119,20 +122,26 @@ function PresentationDetailPage() {
   })
 
   const handleExport = useCallback(async () => {
+    const presentationData = query.data
+    if (!presentationData) {
+      toast.error('Presentation data not loaded yet.')
+      return
+    }
     try {
       setIsExporting(true)
+      toast.loading('Generating PowerPoint file...', { id: 'export-pptx' })
 
-      toast.success('Export started')
-
-      setTimeout(() => {
-        setIsExporting(false)
-      }, 1200)
-    } catch {
-      toast.error('Export failed')
-
+      console.log('[PPTX Export Button] Triggering PowerPoint generation...')
+      await exportPresentationToPPTX(presentationData.title, presentationData.style, slides)
+      
+      toast.success('PowerPoint file downloaded successfully!', { id: 'export-pptx' })
+    } catch (err) {
+      console.error('[PPTX Export Button] Error during export:', err)
+      toast.error(err instanceof Error ? err.message : 'PowerPoint export failed.', { id: 'export-pptx' })
+    } finally {
       setIsExporting(false)
     }
-  }, [])
+  }, [query.data, slides])
 
   if (query.isPending) {
     return (
@@ -174,7 +183,9 @@ function PresentationDetailPage() {
   const activeSlideImageUrl =
     activeSlide?.imageUrl && !failedImageUrls[activeSlide.imageUrl]
       ? activeSlide.imageUrl
-      : null
+      : activeSlide
+        ? getPlaceholderImage(activeSlide.title, activeSlide.content)
+        : null
 
   return (
     <main className="min-h-screen pt-24 pb-12 px-4">
@@ -473,41 +484,11 @@ function PresentationDetailPage() {
             {activeSlide && (
               <div className="space-y-3">
                 <div id="slide-preview-container" className="relative group">
-                  <div
-                    className={`glass rounded-2xl p-8 transition-all ${
-                      isFullscreen ? 'fixed inset-4 z-50 overflow-auto' : ''
-                    }`}
-                  >
-                    <div className="space-y-5">
-                      <h2 className="text-3xl font-bold">
-                        {activeSlide.title}
-                      </h2>
-
-                      <p className="whitespace-pre-wrap leading-relaxed text-muted-foreground">
-                        {activeSlide.content}
-                      </p>
-
-                      {activeSlideImageUrl && (
-                        <img
-                          src={activeSlideImageUrl}
-                          alt={activeSlide.title}
-                          className="w-full rounded-xl border border-border/50"
-                          loading="lazy"
-                          onError={() =>
-                            setFailedImageUrls((prev) => ({
-                              ...prev,
-                              [activeSlideImageUrl]: true,
-                            }))
-                          }
-                        />
-                      )}
-                      {!activeSlideImageUrl && (
-                        <div className="w-full rounded-xl border border-border/50 bg-muted/40 px-4 py-8 text-center text-sm text-muted-foreground">
-                          Image unavailable
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                  <SlidePreview
+                    slide={activeSlide}
+                    isFullscreen={isFullscreen}
+                    style={data.style}
+                  />
 
                   <Button
                     variant="secondary"
@@ -602,6 +583,7 @@ function PresentationDetailPage() {
                     slide={slide}
                     isActive={index === activeSlideIndex}
                     onClick={() => setActiveSlideIndex(index)}
+                    style={data.style}
                   />
                 ))}
               </div>
@@ -615,6 +597,7 @@ function PresentationDetailPage() {
           slides={slides}
           initialIndex={activeSlideIndex}
           onClose={() => setShowSlideshow(false)}
+          style={data.style}
         />
       )}
     </main>

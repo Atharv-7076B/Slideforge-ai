@@ -1,7 +1,12 @@
 export const SLIDE_STYLES = [
-  { value: 'minimal', label: 'Minimal' },
   { value: 'professional', label: 'Professional' },
+  { value: 'futuristic', label: 'Futuristic' },
   { value: 'creative', label: 'Creative' },
+  { value: 'minimal', label: 'Minimal' },
+  { value: 'dark-mode', label: 'Dark Mode' },
+  { value: 'corporate', label: 'Corporate' },
+  { value: 'startup-pitch', label: 'Startup Pitch' },
+  { value: 'education', label: 'Education' },
   { value: 'bold', label: 'Bold' },
 ] as const
 

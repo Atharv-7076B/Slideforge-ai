@@ -53,16 +53,50 @@ function sanitizeFileName(name: string): string {
   return safe || 'slide-image'
 }
 
+async function runDbQueryWithRetry<T>(fn: () => Promise<T>, retries = 3, delay = 500): Promise<T> {
+  let lastError: any
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastError = err
+      const msg = err instanceof Error ? err.message : String(err)
+      const code = (err as any)?.code
+      const isPoolTimeout = 
+        msg.includes('Timed out fetching a new connection') || 
+        msg.includes('connection pool') ||
+        msg.includes('closed the connection') ||
+        code === 'P2024' ||
+        code === 'P2025' ||
+        msg.includes('Server has closed the connection')
+
+      if (isPoolTimeout && i < retries - 1) {
+        console.warn(`[Prisma DB Retry] Transient database error detected (Code: ${code}, Msg: ${msg}). Retrying in ${delay}ms... (Attempt ${i + 1}/${retries})`)
+        await new Promise((resolve) => setTimeout(resolve, delay * Math.pow(2, i)))
+        continue
+      }
+      throw err
+    }
+  }
+  throw lastError
+}
+
 function getBasicAuthHeader(apiKey: string): string {
   return `Basic ${Buffer.from(`${apiKey}:`).toString('base64')}`
 }
 
 async function checkImageKitAvailability(): Promise<boolean> {
   try {
-    validateImageKitConfigOrThrow()
-    const { privateKey } = getImageKitConfig()
+    const { publicKey, urlEndpoint, privateKey } = getImageKitConfig()
+    console.log('[ImageKit Diagnostics] Configuration parameters loaded:', {
+      publicKey: publicKey ? 'SET' : 'MISSING',
+      urlEndpoint: urlEndpoint || 'MISSING',
+      privateKey: privateKey ? `SET (Length: ${privateKey.length})` : 'MISSING',
+    })
 
-    // Probe upload API auth; avoids probing generated delivery URLs.
+    validateImageKitConfigOrThrow()
+
+    console.log('[ImageKit Diagnostics] Executing probe request to ImageKit Upload API...')
     const response = await fetch(
       'https://upload.imagekit.io/api/v1/files/upload',
       {
@@ -72,71 +106,86 @@ async function checkImageKitAvailability(): Promise<boolean> {
         },
       },
     )
+
+    console.log('[ImageKit Diagnostics] Probe response status:', response.status, response.statusText)
+
     if (!response.ok) {
       // 400 is expected due to missing form body; means auth + endpoint are reachable.
-      if (response.status === 400) return true
-      console.error(
-        'ImageKit availability probe returned unexpected response',
-        {
-          status: response.status,
-          statusText: response.statusText,
-        },
-      )
-      return false
+      if (response.status === 400) {
+        console.log('[ImageKit Diagnostics] Probe successful: Auth details are correct and API is reachable.')
+        return true
+      }
+      if (response.status === 401 || response.status === 403) {
+        console.error('[ImageKit Diagnostics] Critical error: ImageKit Auth probe rejected. Invalid keys.')
+        return false
+      }
+      // Any other non-ok HTTP status (e.g., 429, 502) - since config is present, assume availability to try slide-by-slide
+      console.warn('[ImageKit Diagnostics] Probe returned unexpected non-ok status, but env config is set. Proceeding.')
+      return true
     }
     return true
   } catch (error) {
-    console.error('ImageKit availability probe failed', { error })
-    return false
+    console.warn('[ImageKit Diagnostics] Warning: Probe request failed with connection exception, but proceeding since config is set:', error)
+    // If it is a network error (like ENOTFOUND or offline), return true if configuration variables are set
+    const { publicKey, privateKey, urlEndpoint } = getImageKitConfig()
+    return !!(publicKey && privateKey && urlEndpoint)
   }
 }
 
+import { getPlaceholderImage } from '#/features/presentation/utils/placeholder-mapper'
+
 async function generateImageFromPrompt(prompt: string): Promise<string | null> {
-  const hfToken = process.env.HF_TOKEN
+  const hfToken = process.env.HUGGINGFACE_API_KEY ?? process.env.HF_TOKEN
   if (!hfToken) {
-    console.error('Missing HF_TOKEN; skipping image generation')
+    console.error('[HF Image Generation] Error: Missing HF_TOKEN or HUGGINGFACE_API_KEY environment variable.')
     return null
   }
 
+  // Environment toggle check
+  if (process.env.VITE_USE_REAL_AI_IMAGES !== 'true') {
+    console.log('[HF Image Generation] Real AI images are disabled (VITE_USE_REAL_AI_IMAGES !== true). Bypassing HF API call.')
+    return null
+  }
+
+  const API_URL = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
+
   try {
-    console.log(
-      '[HF Image Generation] Starting for prompt:',
-      prompt.slice(0, 100),
-    )
+    console.log('[HF Image Generation] Starting API call to:', API_URL)
+    console.log('[HF Image Generation] Prompt:', prompt)
 
-    // Optimized prompt for FLUX.1 Schnell
-    const optimizedPrompt = `Professional presentation slide illustration. ${prompt}. High quality, clean design, suitable for corporate/business presentations. 16:9 aspect ratio.`
-
-    const response = await fetch(
-      'https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${hfToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          inputs: optimizedPrompt,
-          parameters: {
-            width: 1440,
-            height: 810,
-            num_inference_steps: 4,
-          },
-        }),
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${hfToken}`,
+        'Content-Type': 'application/json',
       },
-    )
+      body: JSON.stringify({
+        inputs: prompt,
+      }),
+    })
+
+    console.log('[HF Image Generation] Response status:', response.status, response.statusText)
 
     if (!response.ok) {
       const errorBody = await response.text()
       const errorMsg = `Hugging Face image generation failed (${response.status}): ${errorBody.slice(0, 300)}`
       console.error('[HF Image Generation] Error:', errorMsg)
-      throw new Error(errorMsg)
+      return null
+    }
+
+    // Validate Content-Type
+    const contentType = response.headers.get('content-type')
+    console.log('[HF Image Generation] Response content-type:', contentType)
+    if (contentType && !contentType.includes('image')) {
+      const errorText = await response.text()
+      console.error(`[HF Image Generation] Error: Non-image content-type returned (${contentType}):`, errorText.slice(0, 300))
+      return null
     }
 
     // Hugging Face returns binary image data
     const buffer = await response.arrayBuffer()
-    if (buffer.byteLength === 0) {
-      console.error('[HF Image Generation] Received empty buffer')
+    if (!buffer || buffer.byteLength === 0) {
+      console.error('[HF Image Generation] Error: Received empty image buffer')
       return null
     }
 
@@ -150,8 +199,8 @@ async function generateImageFromPrompt(prompt: string): Promise<string | null> {
 
     return b64
   } catch (error) {
-    console.error('[HF Image Generation] Exception:', error)
-    throw error
+    console.error('[HF Image Generation] Exception in generateImageFromPrompt:', error)
+    return null
   }
 }
 
@@ -163,49 +212,71 @@ async function uploadBase64ToImageKit(params: {
   validateImageKitConfigOrThrow()
   const { privateKey } = getImageKitConfig()
 
+  console.log('[ImageKit Upload] Uploading to folder:', params.folderPath, 'file:', params.fileName)
+
   const formData = new FormData()
   formData.append('file', `data:image/png;base64,${params.base64Image}`)
   formData.append('fileName', `${params.fileName}.png`)
   formData.append('folder', params.folderPath)
   formData.append('useUniqueFileName', 'false')
 
-  const response = await fetch(
-    'https://upload.imagekit.io/api/v1/files/upload',
-    {
-      method: 'POST',
-      headers: {
-        Authorization: getBasicAuthHeader(privateKey),
-      },
-      body: formData,
-    },
-  )
+  // Retry logic for ImageKit uploads (up to 2 retries with a backoff)
+  let lastError: any
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const response = await fetch(
+        'https://upload.imagekit.io/api/v1/files/upload',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: getBasicAuthHeader(privateKey),
+          },
+          body: formData,
+        },
+      )
 
-  if (!response.ok) {
-    const body = await response.text()
-    throw new Error(
-      `ImageKit upload failed (${response.status}): ${body.slice(0, 300)}`,
-    )
+      if (!response.ok) {
+        const body = await response.text()
+        const errMsg = `ImageKit upload failed (${response.status}): ${body.slice(0, 300)}`
+        console.error(`[ImageKit Upload] Attempt ${attempt} failed:`, errMsg)
+        throw new Error(errMsg)
+      }
+
+      const payload = (await response.json()) as { url?: string }
+      const url = payload.url?.trim()
+      if (!url) {
+        console.error('[ImageKit Upload] Error: ImageKit upload succeeded but no URL returned')
+        throw new Error('ImageKit upload succeeded but no URL returned')
+      }
+
+      const parsed = new URL(url)
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        console.error('[ImageKit Upload] Error: ImageKit returned non-http(s) URL:', url)
+        throw new Error('ImageKit returned non-http(s) URL')
+      }
+
+      console.log('[ImageKit Upload] Successfully uploaded to ImageKit on attempt', attempt, 'URL:', parsed.toString())
+      return parsed.toString()
+    } catch (error) {
+      lastError = error
+      if (attempt < 3) {
+        const waitTime = attempt * 1000
+        console.log(`[ImageKit Upload] Waiting ${waitTime}ms before retry...`)
+        await new Promise((resolve) => setTimeout(resolve, waitTime))
+      }
+    }
   }
 
-  const payload = (await response.json()) as { url?: string }
-  const url = payload.url?.trim()
-  if (!url) {
-    throw new Error('ImageKit upload succeeded but no URL returned')
-  }
-
-  const parsed = new URL(url)
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error('ImageKit returned non-http(s) URL')
-  }
-
-  return parsed.toString()
+  throw lastError
 }
 
 async function createSlideImageAndUpload(params: {
   presentationId: string
   slideOrder: number
   imagePrompt: string
-}): Promise<string | null> {
+  slideTitle: string
+  slideContent: string
+}): Promise<string> {
   try {
     console.log('[Image Pipeline] Starting generation and upload', {
       presentationId: params.presentationId,
@@ -215,18 +286,17 @@ async function createSlideImageAndUpload(params: {
 
     const base64Image = await generateImageFromPrompt(params.imagePrompt)
     if (!base64Image) {
-      console.warn('[Image Pipeline] No image data received from HF', {
-        presentationId: params.presentationId,
-        slideOrder: params.slideOrder,
-      })
-      return null
+      console.warn('[Image Pipeline] Image generation bypassed or failed. Falling back to placeholder.')
+      const fallback = getPlaceholderImage(params.slideTitle, params.slideContent, params.imagePrompt)
+      console.log(`[Image Pipeline] Using fallback placeholder for slide ${params.slideOrder}: ${fallback}`)
+      return fallback
     }
 
     const fileName = sanitizeFileName(
       `slide-${params.presentationId}-${params.slideOrder}`,
     )
 
-    console.log('[Image Pipeline] Image generated, uploading to ImageKit', {
+    console.log('[Image Pipeline] Image generated, uploading base64 to ImageKit', {
       fileName,
       sizeBytes: base64Image.length,
     })
@@ -237,32 +307,54 @@ async function createSlideImageAndUpload(params: {
       folderPath: `/presentations/${sanitizeFileName(params.presentationId)}`,
     })
 
-    console.log('[Image Pipeline] Successfully uploaded image', {
+    console.log('[Image Pipeline] Successfully completed upload flow', {
       presentationId: params.presentationId,
       slideOrder: params.slideOrder,
-      imageUrl: imageUrl.slice(0, 100) + '...',
+      imageUrl,
     })
 
     return imageUrl
   } catch (error) {
-    console.error('[Image Pipeline] Slide image generation/upload failed', {
+    console.error('[Image Pipeline] Slide image generation/upload failed. Falling back to placeholder.', {
       presentationId: params.presentationId,
       slideOrder: params.slideOrder,
       error: error instanceof Error ? error.message : String(error),
     })
-    return null
+    const fallback = getPlaceholderImage(params.slideTitle, params.slideContent, params.imagePrompt)
+    console.log(`[Image Pipeline] Using fallback placeholder for slide ${params.slideOrder}: ${fallback}`)
+    return fallback
   }
 }
 
 const slideSchema = z.object({
-  heading: z.string().describe('Slide heading'),
-  body: z.string().optional().describe('Main slide paragraph content'),
-  bullets: z.array(z.string()).optional().describe('Bullet points'),
+  heading: z.string().describe('Concise slide title (max 6-8 words)'),
+  layoutType: z.enum([
+    'hero',
+    'split-left',
+    'split-right',
+    'full-image',
+    'quote',
+    'stats',
+    'grid',
+    'standard'
+  ]).describe('Intelligent layout choice to pace the storytelling. hero: intro/outro; split: text + image; full-image: visual focus; quote: key insight statement; stats: 2-3 metric highlights; grid: 3 feature pillars; standard: general text.'),
+  body: z.string().optional().describe('Main storytelling text. Keep it punchy, visual, and high-impact.'),
+  bullets: z.array(z.string()).optional().describe('3-4 key short bullet items (needed if standard, split, or grid layouts are selected).'),
+  quoteText: z.string().optional().describe('Quote body (required ONLY if layoutType is "quote").'),
+  quoteAuthor: z.string().optional().describe('Quote attribution/author (required ONLY if layoutType is "quote").'),
+  stats: z.array(z.object({
+    value: z.string().describe('Large display number/metric (e.g. "99%", "$12M", "5x")'),
+    label: z.string().describe('Short descriptive label for the metric')
+  })).optional().describe('List of 2-3 key metrics (required ONLY if layoutType is "stats").'),
+  gridItems: z.array(z.object({
+    title: z.string().describe('Feature/pillar title'),
+    description: z.string().describe('Feature description')
+  })).optional().describe('List of 3 features/pillars (required ONLY if layoutType is "grid").'),
   speakerNotes: z.string().optional().describe('Speaker notes'),
   imagePrompt: z
     .string()
     .describe(
-      'A concise prompt to generate an illustration for this slide (professional, clean style, no text in image)',
+      'Highly detailed, contextual image generation prompt matching the topic, emotional tone, and layout style (16:9 cinematic, ultra detailed, style matching the requested presentation theme, no text, no logos)',
     ),
 })
 
@@ -283,9 +375,9 @@ export const generatePresentation = inngest.createFunction(
     try {
       const presentation = await step.run('fetch-presentation', async () => {
         console.log('[Presentation Generation] Fetching presentation data')
-        const p = await prisma.presentation.findUnique({
+        const p = await runDbQueryWithRetry(() => prisma.presentation.findUnique({
           where: { id: presentationId },
-        })
+        }))
         if (!p) throw new Error('Presentation not found')
         console.log('[Presentation Generation] Presentation fetched', {
           title: p.title,
@@ -298,12 +390,12 @@ export const generatePresentation = inngest.createFunction(
 
       await step.run('mark-generating', async () => {
         console.log('[Presentation Generation] Marking as GENERATING')
-        await prisma.presentation.update({
+        await runDbQueryWithRetry(() => prisma.presentation.update({
           where: { id: presentation.id },
           data: {
             status: PresentationStatus.GENERATING,
           },
-        })
+        }))
       })
 
       const { slides } = await step.run('generate-slides-content', async () => {
@@ -312,53 +404,44 @@ export const generatePresentation = inngest.createFunction(
         )
         validateRequiredAiEnv()
 
-        const systemPrompt = `You are an expert presentation designer and content strategist.
+        const systemPrompt = `You are a world-class presentation designer and visual copywriter.
+You will write a compelling, narrative-driven presentation on the given topic.
 
-Your ONLY output is a valid JSON object — no markdown fences, no preamble, no explanation. Any non-JSON output will break the application.
+Your ONLY output is a valid JSON object — no markdown fences, no preamble, no explanation.
 
 ## Presentation context
-- Style: ${presentation.style}
+- Topic: "${presentation.prompt}"
+- Theme/Style: ${presentation.style}
 - Tone: ${presentation.tone}
-- Layout preference: ${presentation.layout}
 - Slide count: ${presentation.slideCount}
 
-## Output schema
-Return exactly this structure:
+## Slide layout strategy
+To make the presentation feel professional and cinematic like Gamma.app, vary layoutType dynamically across slides. Avoid repeating the same layout back-to-back.
+Choose layouts based on slide purpose:
+- Slide 1 (Intro): Must be "hero" layout.
+- Slides 2-3 (Problem/Context): Use "split-left" or "split-right".
+- Slide 4 (Key Insight/Quote): Use "quote" to break the pace.
+- Slide 5 (Core Features/Pillars): Use "grid" (columns).
+- Slide 6 (Performance/Data): Use "stats" (metrics).
+- Slide 7 (Visual/Impact): Use "full-image" with overlaid text.
+- Slide 8 (Conclusion/CTA): Use "hero" or "split" to wrap up.
 
-{
-  "slides": [
-    {
-      "heading": "string — max 8 words",
-      "body": "string | null",
-      "bullets": ["string"] | null,
-      "speakerNotes": "string | null",
-      "imagePrompt": "string"
-    }
-  ]
-}
+## Layout specifications (Fill appropriate fields)
+- If layoutType is "quote": Fill "quoteText" and "quoteAuthor".
+- If layoutType is "stats": Fill "stats" array (2-3 items).
+- If layoutType is "grid": Fill "gridItems" array (exactly 3 items).
+- If layoutType is "split-left" or "split-right": Fill "body" or "bullets".
+- If layoutType is "standard": Fill "body" or "bullets".
 
-## Slide structure rules
-- Generate exactly ${presentation.slideCount} slides
-- Slide 1 should act like a title slide
-- Final slide should provide a clear closing CTA or summary
-- Apply tone "${presentation.tone}" to word choices in every heading and bullet
-- Apply style "${presentation.style}" to how ideas are framed (e.g. bold/provocative vs. measured/academic)
+## imagePrompt requirements (critical)
+Create a detailed prompt for generating an image that illustrates the slide's core metaphor.
+- Do NOT generate generic or text-heavy prompts.
+- Describe the setting, lighting, color tone, style matching "${presentation.style}", and cinematic details.
+- Avoid text, letters, watermarks, screens, or phones in images.
+- Example: "A sleek workspace overlooking a neon fujimi skyline, cinematic lighting, fuchsia and slate accents, futuristic illustration, ultra detailed, 16:9"
 
-## imagePrompt rules (critical)
-Each imagePrompt must:
-- Be 20-40 words describing a photorealistic or illustrated scene
-- NEVER include text, words, logos, or UI elements in the image
-- NEVER depict faces of identifiable people
-- Describe the lighting, color palette, and mood explicitly
-- Directly relate to the slide's specific content
-- Example: "Overhead view of a modern open-plan office with warm amber lighting, wooden desks, green plants, and soft morning light streaming through floor-to-ceiling windows"
-
-## Quality rules
-- Headings: action-oriented or curiosity-driving, not generic labels
-- Bullets: start with strong verbs or concrete numbers
-- No filler phrases ("In conclusion…", "As we can see…")
-- Every slide must earn its place — cut if it doesn't add new value
-- Ensure narrative arc: problem → insight → solution → evidence → action`
+## Narrative structure
+Ensure the presentation has a clear progression from introduction, core problem/opportunity, detailed solution/arguments, data/proof points, and a strong conclusion.`
 
         const result = await generateText({
           model: google('gemini-2.5-flash'),
@@ -379,114 +462,110 @@ Each imagePrompt must:
 
       await step.run('delete-old-slides', async () => {
         console.log('[Presentation Generation] Deleting old slides')
-        await prisma.slide.deleteMany({
+        await runDbQueryWithRetry(() => prisma.slide.deleteMany({
           where: { presentationId: presentation.id },
-        })
+        }))
       })
 
-      await step.run('create-slides', async () => {
-        const imageKitAvailable = await checkImageKitAvailability()
-        if (!imageKitAvailable) {
-          console.error(
-            '[Presentation Generation] ImageKit is unavailable; slides will be stored without image URLs for this run',
-            { presentationId },
-          )
-        } else {
-          console.log(
-            '[Presentation Generation] ImageKit is available, will generate images',
-            {
-              presentationId,
-              slideCount: slides.length,
-            },
-          )
-        }
+      const imageKitAvailable = await step.run('check-imagekit', async () => {
+        return checkImageKitAvailability()
+      })
 
+      console.log('[Presentation Generation] ImageKit availability:', imageKitAvailable)
+
+      const uploadedImageUrls: string[] = []
+      // Sequential loop to execute slide generation steps to protect connection pooling and HF rate limits
+      for (let index = 0; index < slides.length; index++) {
+        const slide = slides[index]
+        const url = await step.run(`generate-image-slide-${index}`, async () => {
+          if (!imageKitAvailable) {
+            console.log('[Presentation Generation] Skipping image generation because ImageKit is unavailable. Using placeholder for slide:', index)
+            return getPlaceholderImage(
+              slide.heading,
+              slide.body ?? slide.bullets?.join(' ') ?? '',
+              slide.imagePrompt
+            )
+          }
+          return createSlideImageAndUpload({
+            presentationId,
+            slideOrder: index,
+            imagePrompt: slide.imagePrompt,
+            slideTitle: slide.heading,
+            slideContent: slide.body ?? slide.bullets?.join(' ') ?? '',
+          })
+        })
+        uploadedImageUrls.push(url)
+      }
+
+      await step.run('save-slides-to-db', async () => {
         const data = slides.map((slide, index) => {
-          const bulletsText =
-            slide.bullets && slide.bullets.length > 0
-              ? slide.bullets.map((bullet) => `• ${bullet}`).join('\n')
-              : ''
-          const bodyText = slide.body?.trim() ?? ''
-          const content = [bodyText, bulletsText].filter(Boolean).join('\n\n')
+          // Strict validation and default fallbacks for slide content JSON fields
+          const layoutType = slide.layoutType || 'standard'
+          let body = slide.body || ''
+          let bullets = slide.bullets || []
+          let quoteText = slide.quoteText || ''
+          let quoteAuthor = slide.quoteAuthor || ''
+          let stats = slide.stats || []
+          let gridItems = slide.gridItems || []
+
+          // Auto-generate fallback content when missing based on layout type
+          if (layoutType === 'quote' && !quoteText) {
+            quoteText = body || 'A powerful strategic perspective.'
+            quoteAuthor = quoteAuthor || 'Leader'
+          }
+          if (layoutType === 'stats' && stats.length === 0) {
+            stats = [
+              { value: '75%', label: 'Projected growth index' },
+              { value: '2x', label: 'Operational speed improvement' }
+            ]
+          }
+          if (layoutType === 'grid' && gridItems.length === 0) {
+            gridItems = [
+              { title: 'Core Advantage 1', description: 'Detailed presentation pillar highlight.' },
+              { title: 'Core Advantage 2', description: 'Detailed presentation pillar highlight.' },
+              { title: 'Core Advantage 3', description: 'Detailed presentation pillar highlight.' }
+            ]
+          }
+          if (layoutType === 'standard' && !body && bullets.length === 0) {
+            body = 'Key insights and summary metrics are shown on this page.'
+          }
+
+          const contentJson = JSON.stringify({
+            layoutType,
+            body,
+            bullets,
+            quoteText,
+            quoteAuthor,
+            stats,
+            gridItems,
+          })
+
           return {
             presentationId,
             order: index,
             title: slide.heading.trim() || `Slide ${index + 1}`,
-            content: content || 'No content generated',
+            content: contentJson,
             notes: slide.speakerNotes?.trim() || null,
             imagePrompt: slide.imagePrompt || null,
-            imageUrl: null as string | null,
+            imageUrl: uploadedImageUrls[index] || null,
           }
         })
 
-        console.log(
-          '[Presentation Generation] Starting parallel image generation',
-          {
-            presentationId,
-            totalSlides: slides.length,
-          },
-        )
-
-        const uploadedImageUrls = await Promise.all(
-          slides.map((slide, index) => {
-            if (!imageKitAvailable) {
-              console.log(
-                '[Presentation Generation] Skipping image for slide',
-                {
-                  slideOrder: index,
-                  reason: 'ImageKit unavailable',
-                },
-              )
-              return Promise.resolve<string | null>(null)
-            }
-            console.log(
-              '[Presentation Generation] Queuing image generation for slide',
-              {
-                slideOrder: index,
-                promptLength: slide.imagePrompt.length,
-              },
-            )
-            return createSlideImageAndUpload({
-              presentationId,
-              slideOrder: index,
-              imagePrompt: slide.imagePrompt,
-            })
-          }),
-        )
-
-        const successCount = uploadedImageUrls.filter(
-          (url) => url !== null,
-        ).length
-        console.log(
-          '[Presentation Generation] Image generation batch completed',
-          {
-            presentationId,
-            successCount,
-            totalSlides: slides.length,
-            failureCount: slides.length - successCount,
-          },
-        )
-
-        const finalData = data.map((slide, index) => ({
-          ...slide,
-          imageUrl: uploadedImageUrls[index],
-        }))
-
-        await prisma.slide.createMany({ data: finalData })
+        await runDbQueryWithRetry(() => prisma.slide.createMany({ data }))
         console.log('[Presentation Generation] Slides created in database', {
           presentationId,
-          slideCount: finalData.length,
+          slideCount: data.length,
         })
       })
 
       await step.run('mark-completed', async () => {
         console.log('[Presentation Generation] Marking as COMPLETED')
-        await prisma.presentation.update({
+        await runDbQueryWithRetry(() => prisma.presentation.update({
           where: { id: presentation.id },
           data: {
             status: PresentationStatus.COMPLETED,
           },
-        })
+        }))
       })
 
       console.log('[Presentation Generation] Successfully completed', {
@@ -501,10 +580,10 @@ Each imagePrompt must:
         stack: error instanceof Error ? error.stack : undefined,
       })
       try {
-        await prisma.presentation.update({
+        await runDbQueryWithRetry(() => prisma.presentation.update({
           where: { id: presentationId },
           data: { status: PresentationStatus.FAILED },
-        })
+        }))
         console.log('[Presentation Generation] Marked as FAILED')
       } catch (updateError) {
         console.error('[Presentation Generation] Failed to mark as FAILED', {
@@ -517,5 +596,7 @@ Each imagePrompt must:
       }
       throw error
     }
-  },
+  }
 )
+
+
