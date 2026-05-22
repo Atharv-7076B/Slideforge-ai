@@ -16,19 +16,23 @@ SlideForge AI is a premium, modern, and clean AI-powered presentation generation
 ## 🚀 Key Features
 
 ### 1. AI Slide Outline Generation
-- Utilizes **Google Gemini (gemini-3.5-flash)** to synthesize topics or notes into a structured narrative presentation.
+
+- Utilizes **Google Gemini (gemini-2.5-flash)** to synthesize topics or notes into a structured narrative presentation.
 - Dynamically generates distinct layouts (Hero, Stats, Quote, Grid, Split layouts, Full-Image, and Standard) matching premium design standards.
 
 ### 2. Sequential Widescreen Image Pipeline
+
 - Sequentially processes widescreen (`1024x576`) 16:9 slide images via **Inngest** background jobs.
-- Integrates with the **FLUX.1-schnell** model on Hugging Face.
+- Integrates with the **FLUX.1-schnell** model on Hugging Face (or falls back to **Imagen 3** on Google Gen AI depending on target client setup).
 - Uploads images to **ImageKit** with retry capabilities and stores URLs in the database.
 
 ### 3. Dynamic Visual Layout Balancer
+
 - Performs text density analysis. If text is brief, fonts scale up and layouts automatically balance margins and spacing to eliminate awkward gaps.
 - Renders premium mesh background gradients if image models fail or are disabled.
 
 ### 4. Native PowerPoint (PPTX) & PDF Export
+
 - Leverages `pptxgenjs` to compile widescreen presentations directly into vector shapes, native text blocks, and embedded image files.
 
 ---
@@ -38,8 +42,8 @@ SlideForge AI is a premium, modern, and clean AI-powered presentation generation
 - **Frontend Core**: React 19, TypeScript, Tailwind CSS (v4 via `@tailwindcss/vite`)
 - **Routing & Framework**: TanStack Router (file-based routing), TanStack Start (Nitro dev server)
 - **State & Action Manager**: TanStack Query (React Query)
-- **Database / ORM**: Prisma ORM with SQLite (development) or PostgreSQL (production)
-- **Authentication**: Better Auth
+- **Database / ORM**: Prisma ORM with PostgreSQL (hosted on Neon database)
+- **Authentication**: Better Auth (with Credentials, Google, and GitHub OAuth support)
 - **Animations**: Framer Motion
 - **Icons**: Lucide React
 - **Background Orchestration**: Inngest
@@ -53,31 +57,51 @@ slideforge-ai/
 ├── app/
 │   └── globals.css           # Global CSS variables & assets
 ├── prisma/
-│   ├── schema.prisma         # Database schemas for users, accounts, decks
-│   └── dev.db                # SQLite local development database
+│   ├── migrations/           # Database schema migrations
+│   └── schema.prisma         # Database schemas for users, accounts, decks
 ├── src/
 │   ├── components/            # Shared UI components
-│   │   ├── auth/             # Login & Signup view components
-│   │   ├── ui/               # Lower-level design tokens (buttons, cards, sliders)
+│   │   ├── auth/             # Authentication components (login/signup layouts & forms)
+│   │   │   ├── auth-layout.tsx
+│   │   │   └── login-form.tsx
+│   │   ├── provider/         # Global React context providers
+│   │   │   └── theme-provider.tsx
+│   │   ├── ui/               # Lower-level design tokens (buttons, cards, inputs)
+│   │   ├── Footer.tsx        # Global footer
 │   │   ├── landing-page.tsx  # Redesigned premium SaaS landing page
-│   │   └── navbar.tsx        # Global header navigation and theme switcher
-│   ├── features/
-│   │   ├── actions/          # Database mutations and queries
-│   │   ├── components/       # Presentation lists, slide editors, previews
-│   │   ├── constant/         # Brand definitions and theme options
-│   │   └── presentation/     # Layout options and PowerPoint compiler
+│   │   └── navbar.tsx        # Global header navigation and user controls
+│   ├── features/             # Feature-specific state, helpers, and assets
+│   │   ├── actions/          # Database mutations and server queries
+│   │   ├── components/       # Slide editors, previews, deck dashboard lists
+│   │   ├── constant/         # Brand themes, styles, and templates
+│   │   ├── presentation/     # Layout templates and pptxgenjs compilation
+│   │   ├── types/            # TypeScript schema types and validators
+│   │   └── utils/            # Helper utilities for data and slide processing
+│   ├── hooks/                # Custom React hooks (e.g. use-mobile.ts)
 │   ├── integrations/
-│   │   └── inngest/          # Background event loops and handlers
-│   ├── lib/                  # Auth clients, API clients, Query client
+│   │   └── inngest/          # Background event definitions, clients, and execution loops
+│   │       ├── client.ts
+│   │       ├── functions/
+│   │       └── functions.ts
+│   ├── lib/                  # Database, Auth, Query clients, and general utilities
+│   ├── middleware/           # Server middlewares (e.g. auth guard)
 │   ├── routes/               # TanStack File-Based routing
 │   │   ├── __root.tsx        # Shell layout & Toasters
-│   │   ├── index.tsx         # Main entry point (redirects to /dashboard if logged in)
-│   │   └── dashboard.tsx     # Workspace console for deck generations
-│   ├── styles.css            # Custom glassmorphism, animations, styles
-│   └── router.tsx            # TanStack Router config
+│   │   ├── _auth/            # Auth pages group (login, signup)
+│   │   ├── api/              # Backend endpoints (auth handlers, Inngest endpoints)
+│   │   ├── index.tsx         # Home / landing page
+│   │   ├── about.tsx         # Information page
+│   │   ├── dashboard.tsx     # Presentation dashboard console
+│   │   ├── export.tsx        # Compilation & slide export trigger
+│   │   ├── presentations.$presentationId.tsx  # Interactive slide editor
+│   │   ├── presentations.index.tsx
+│   │   └── settings.tsx      # User profile and account configuration
+│   ├── styles.css            # Custom CSS, glassmorphism, animations, layouts
+│   ├── routeTree.gen.ts      # Auto-generated TanStack Router routes
+│   └── router.tsx            # TanStack Router initialization
 ├── package.json              # Project dependencies and script runners
 ├── tsconfig.json             # TypeScript configurations
-└── vite.config.ts            # Vite compile environment & Tailwind plugin
+└── vite.config.ts            # Vite compile environment & plugins
 ```
 
 ---
@@ -87,12 +111,21 @@ slideforge-ai/
 Create a `.env` file in the root directory:
 
 ```env
-# Database Connection (Prisma)
-DATABASE_URL="file:./dev.db"
+# Database Connection (Prisma PostgreSQL)
+DATABASE_URL="postgresql://username:password@hostname/dbname?sslmode=require"
 
 # Better Auth Configuration
 BETTER_AUTH_SECRET="your-super-secret-auth-key-here"
 BETTER_AUTH_URL="http://localhost:3000"
+
+# OAuth Credentials (Better Auth)
+GOOGLE_CLIENT_ID="your-google-client-id"
+GOOGLE_CLIENT_SECRET="your-google-client-secret"
+GITHUB_CLIENT_ID="your-github-client-id"
+GITHUB_CLIENT_SECRET="your-github-client-secret"
+
+# Google Gemini API Key
+GOOGLE_GENERATIVE_AI_API_KEY="your-google-generative-ai-api-key"
 
 # Hugging Face AI Image Generation
 HF_TOKEN="hf_your_hugging_face_token_here"
@@ -112,25 +145,35 @@ INNGEST_EVENT_KEY="local"
 ## 💻 Local Development Setup
 
 ### 1. Install Dependencies
+
 ```bash
 npm install
 ```
 
 ### 2. Initialize database schemas
+
+Push the Prisma schemas to your PostgreSQL instance:
+
 ```bash
 npx prisma db push
 ```
 
 ### 3. Run Inngest Dev Server
+
 SlideForge AI uses Inngest for background orchestration. Open a separate terminal and run:
+
 ```bash
-npx inngest-cli@latest dev
+npm run inngest
 ```
 
+_(This maps the dev server to coordinate with `http://localhost:3000/api/inngest`)_
+
 ### 4. Launch Development Server
+
 ```bash
 npm run dev
 ```
+
 Open [http://localhost:3000](http://localhost:3000) to view the application.
 
 ---
