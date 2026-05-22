@@ -1,218 +1,169 @@
-Welcome to your new TanStack Start app! 
+# SlideForge AI - Premium AI Presentation SaaS Platform
 
-# Getting Started
+SlideForge AI is a premium, modern, and clean AI-powered presentation generation SaaS platform. Inspired by the design ethics of Linear, Framer, Vercel, and Notion, it provides a high-contrast dark theme landing page, minimalist typography, and fluid micro-interactions. Users can input any topic or raw notes and instantly generate structured slide decks featuring auto-balanced layouts, context-matched 16:9 AI-generated illustrations, and high-fidelity PowerPoint (PPTX) exports.
 
-To run this application:
+---
 
+## 🎨 Design System & Style
+
+- **Premium Aesthetic**: Clean dark mode utilizing rich deep shades (`#050506` / `bg-zinc-950`), thin, elegant borders (`border-zinc-800`), and generous whitespace.
+- **Accents**: Subtle orange/amber highlights (`text-orange-500` / `bg-orange-500` / `hover:border-orange-500/20`) to map cleanly to the workspace's default peach palette.
+- **Typography**: Clean, readable typography using Geist or Inter with a robust layout hierarchy.
+- **Animations**: Driven by `framer-motion` to produce subtle, high-performance card scaling, fade-in loading steps, and smooth state updates without cluttering the screen.
+
+---
+
+## 🚀 Key Features
+
+### 1. AI Slide Outline Generation
+- Utilizes **Google Gemini (gemini-3.5-flash)** to synthesize topics or notes into a structured narrative presentation.
+- Dynamically generates distinct layouts (Hero, Stats, Quote, Grid, Split layouts, Full-Image, and Standard) matching premium design standards.
+
+### 2. Sequential Widescreen Image Pipeline
+- Sequentially processes widescreen (`1024x576`) 16:9 slide images via **Inngest** background jobs.
+- Integrates with the **FLUX.1-schnell** model on Hugging Face.
+- Uploads images to **ImageKit** with retry capabilities and stores URLs in the database.
+
+### 3. Dynamic Visual Layout Balancer
+- Performs text density analysis. If text is brief, fonts scale up and layouts automatically balance margins and spacing to eliminate awkward gaps.
+- Renders premium mesh background gradients if image models fail or are disabled.
+
+### 4. Native PowerPoint (PPTX) & PDF Export
+- Leverages `pptxgenjs` to compile widescreen presentations directly into vector shapes, native text blocks, and embedded image files.
+
+---
+
+## 🛠️ Technology Stack
+
+- **Frontend Core**: React 19, TypeScript, Tailwind CSS (v4 via `@tailwindcss/vite`)
+- **Routing & Framework**: TanStack Router (file-based routing), TanStack Start (Nitro dev server)
+- **State & Action Manager**: TanStack Query (React Query)
+- **Database / ORM**: Prisma ORM with SQLite (development) or PostgreSQL (production)
+- **Authentication**: Better Auth
+- **Animations**: Framer Motion
+- **Icons**: Lucide React
+- **Background Orchestration**: Inngest
+
+---
+
+## 📂 Folder Structure & Component Architecture
+
+```
+slideforge-ai/
+├── app/
+│   └── globals.css           # Global CSS variables & assets
+├── prisma/
+│   ├── schema.prisma         # Database schemas for users, accounts, decks
+│   └── dev.db                # SQLite local development database
+├── src/
+│   ├── components/            # Shared UI components
+│   │   ├── auth/             # Login & Signup view components
+│   │   ├── ui/               # Lower-level design tokens (buttons, cards, sliders)
+│   │   ├── landing-page.tsx  # Redesigned premium SaaS landing page
+│   │   └── navbar.tsx        # Global header navigation and theme switcher
+│   ├── features/
+│   │   ├── actions/          # Database mutations and queries
+│   │   ├── components/       # Presentation lists, slide editors, previews
+│   │   ├── constant/         # Brand definitions and theme options
+│   │   └── presentation/     # Layout options and PowerPoint compiler
+│   ├── integrations/
+│   │   └── inngest/          # Background event loops and handlers
+│   ├── lib/                  # Auth clients, API clients, Query client
+│   ├── routes/               # TanStack File-Based routing
+│   │   ├── __root.tsx        # Shell layout & Toasters
+│   │   ├── index.tsx         # Main entry point (redirects to /dashboard if logged in)
+│   │   └── dashboard.tsx     # Workspace console for deck generations
+│   ├── styles.css            # Custom glassmorphism, animations, styles
+│   └── router.tsx            # TanStack Router config
+├── package.json              # Project dependencies and script runners
+├── tsconfig.json             # TypeScript configurations
+└── vite.config.ts            # Vite compile environment & Tailwind plugin
+```
+
+---
+
+## ⚙️ Environment Configuration
+
+Create a `.env` file in the root directory:
+
+```env
+# Database Connection (Prisma)
+DATABASE_URL="file:./dev.db"
+
+# Better Auth Configuration
+BETTER_AUTH_SECRET="your-super-secret-auth-key-here"
+BETTER_AUTH_URL="http://localhost:3000"
+
+# Hugging Face AI Image Generation
+HF_TOKEN="hf_your_hugging_face_token_here"
+VITE_USE_REAL_AI_IMAGES="true" # Set to true to call FLUX, false for fallbacks
+
+# ImageKit Integration (Media Hosting)
+IMAGEKIT_PUBLIC_KEY="public_your_imagekit_public_key"
+IMAGEKIT_PRIVATE_KEY="private_your_imagekit_private_key"
+IMAGEKIT_URL_ENDPOINT="https://ik.imagekit.io/your_endpoint_id"
+
+# Inngest Event Processing
+INNGEST_EVENT_KEY="local"
+```
+
+---
+
+## 💻 Local Development Setup
+
+### 1. Install Dependencies
 ```bash
 npm install
+```
+
+### 2. Initialize database schemas
+```bash
+npx prisma db push
+```
+
+### 3. Run Inngest Dev Server
+SlideForge AI uses Inngest for background orchestration. Open a separate terminal and run:
+```bash
+npx inngest-cli@latest dev
+```
+
+### 4. Launch Development Server
+```bash
 npm run dev
 ```
+Open [http://localhost:3000](http://localhost:3000) to view the application.
 
-# Building For Production
+---
 
-To build this application for production:
+## 🏗️ Deployment Instructions
 
-```bash
-npm run build
-```
-
-## Testing
-
-This project uses [Vitest](https://vitest.dev/) for testing. You can run the tests with:
+To compile SlideForge AI for production deployment:
 
 ```bash
-npm run test
-```
-
-## Styling
-
-This project uses [Tailwind CSS](https://tailwindcss.com/) for styling.
-
-### Removing Tailwind CSS
-
-If you prefer not to use Tailwind CSS:
-
-1. Remove the demo pages in `src/routes/demo/`
-2. Replace the Tailwind import in `src/styles.css` with your own styles
-3. Remove `tailwindcss()` from the plugins array in `vite.config.ts`
-4. Uninstall the packages: `npm install @tailwindcss/vite tailwindcss -D`
-
-## Linting & Formatting
-
-
-This project uses [eslint](https://eslint.org/) and [prettier](https://prettier.io/) for linting and formatting. Eslint is configured using [tanstack/eslint-config](https://tanstack.com/config/latest/docs/eslint). The following scripts are available:
-
-```bash
-npm run lint
-npm run format
+# Check TypeScript types and Prettier styling
 npm run check
+
+# Create production bundles
+npm run build
 ```
 
-
-## Deploy with Nitro
-
-This project uses Nitro as a generic server adapter, so it can run on any Node-compatible host.
+The build compiles into an optimized Node.js server using **Nitro**. Start the production server locally by running:
 
 ```bash
-npm run build
 node dist/server/index.mjs
 ```
 
-The build output is a self-contained Node server. To deploy, push the `dist/` directory to your host (Render, Fly.io, your own VPS, etc.) and run the server command above.
+---
 
-For host-specific presets (Vercel, Netlify, Cloudflare, AWS Lambda, etc.) and tuning, see https://v3.nitro.build/deploy.
+## 🔮 Future Roadmap
 
+- [ ] **Collaborative Live Rooms**: Add multiplayer cursors and real-time co-authoring using WebSockets.
+- [ ] **Custom Style Lora Fine-Tuning**: Allow teams to fine-tune image models on their company style guides.
+- [ ] **Speech-to-Presentation Mode**: Generate an entire presentation deck from a recorded audio note or meeting transcript.
+- [ ] **AI-driven Chart Engine**: Insert live spreadsheets and automatically format bar charts, line graphs, and pie slices in brand colors.
 
+---
 
-## Routing
+## 📄 License
 
-This project uses [TanStack Router](https://tanstack.com/router) with file-based routing. Routes are managed as files in `src/routes`.
-
-### Adding A Route
-
-To add a new route to your application just add a new file in the `./src/routes` directory.
-
-TanStack will automatically generate the content of the route file for you.
-
-Now that you have two routes you can use a `Link` component to navigate between them.
-
-### Adding Links
-
-To use SPA (Single Page Application) navigation you will need to import the `Link` component from `@tanstack/react-router`.
-
-```tsx
-import { Link } from "@tanstack/react-router";
-```
-
-Then anywhere in your JSX you can use it like so:
-
-```tsx
-<Link to="/about">About</Link>
-```
-
-This will create a link that will navigate to the `/about` route.
-
-More information on the `Link` component can be found in the [Link documentation](https://tanstack.com/router/v1/docs/framework/react/api/router/linkComponent).
-
-### Using A Layout
-
-In the File Based Routing setup the layout is located in `src/routes/__root.tsx`. Anything you add to the root route will appear in all the routes. The route content will appear in the JSX where you render `{children}` in the `shellComponent`.
-
-Here is an example layout that includes a header:
-
-```tsx
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
-
-export const Route = createRootRoute({
-  head: () => ({
-    meta: [
-      { charSet: 'utf-8' },
-      { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      { title: 'My App' },
-    ],
-  }),
-  shellComponent: ({ children }) => (
-    <html lang="en">
-      <head>
-        <HeadContent />
-      </head>
-      <body>
-        <header>
-          <nav>
-            <Link to="/">Home</Link>
-            <Link to="/about">About</Link>
-          </nav>
-        </header>
-        {children}
-        <Scripts />
-      </body>
-    </html>
-  ),
-})
-```
-
-More information on layouts can be found in the [Layouts documentation](https://tanstack.com/router/latest/docs/framework/react/guide/routing-concepts#layouts).
-
-## Server Functions
-
-TanStack Start provides server functions that allow you to write server-side code that seamlessly integrates with your client components.
-
-```tsx
-import { createServerFn } from '@tanstack/react-start'
-
-const getServerTime = createServerFn({
-  method: 'GET',
-}).handler(async () => {
-  return new Date().toISOString()
-})
-
-// Use in a component
-function MyComponent() {
-  const [time, setTime] = useState('')
-  
-  useEffect(() => {
-    getServerTime().then(setTime)
-  }, [])
-  
-  return <div>Server time: {time}</div>
-}
-```
-
-## API Routes
-
-You can create API routes by using the `server` property in your route definitions:
-
-```tsx
-import { createFileRoute } from '@tanstack/react-router'
-import { json } from '@tanstack/react-start'
-
-export const Route = createFileRoute('/api/hello')({
-  server: {
-    handlers: {
-      GET: () => json({ message: 'Hello, World!' }),
-    },
-  },
-})
-```
-
-## Data Fetching
-
-There are multiple ways to fetch data in your application. You can use TanStack Query to fetch data from a server. But you can also use the `loader` functionality built into TanStack Router to load the data for a route before it's rendered.
-
-For example:
-
-```tsx
-import { createFileRoute } from '@tanstack/react-router'
-
-export const Route = createFileRoute('/people')({
-  loader: async () => {
-    const response = await fetch('https://swapi.dev/api/people')
-    return response.json()
-  },
-  component: PeopleComponent,
-})
-
-function PeopleComponent() {
-  const data = Route.useLoaderData()
-  return (
-    <ul>
-      {data.results.map((person) => (
-        <li key={person.name}>{person.name}</li>
-      ))}
-    </ul>
-  )
-}
-```
-
-Loaders simplify your data fetching logic dramatically. Check out more information in the [Loader documentation](https://tanstack.com/router/latest/docs/framework/react/guide/data-loading#loader-parameters).
-
-# Demo files
-
-Files prefixed with `demo` can be safely deleted. They are there to provide a starting point for you to play around with the features you've installed.
-
-# Learn More
-
-You can learn more about all of the offerings from TanStack in the [TanStack documentation](https://tanstack.com).
-
-For TanStack Start specific documentation, visit [TanStack Start](https://tanstack.com/start).
+This project is licensed under the MIT License. See individual code headers for detail.

@@ -161,6 +161,11 @@ async function generateImageFromPrompt(prompt: string): Promise<string | null> {
       },
       body: JSON.stringify({
         inputs: prompt,
+        parameters: {
+          width: 1024,
+          height: 576,
+          num_inference_steps: 4,
+        },
       }),
     })
 
@@ -199,8 +204,93 @@ async function generateImageFromPrompt(prompt: string): Promise<string | null> {
 
     return b64
   } catch (error) {
-    console.error('[HF Image Generation] Exception in generateImageFromPrompt:', error)
+    console.error('[HF Image Generation] Connection/Fetch failed:', error)
     return null
+  }
+}
+
+function getStylePromptPrefix(style: string | null | undefined): string {
+  const t = style?.toLowerCase() || 'modern'
+  switch (t) {
+    case 'futuristic':
+      return 'Futuristic synthwave 3D render, holographic glows, cyberpunk neon lights, dark high-tech background, cinematic lighting, 16:9 aspect ratio, masterwork illustration'
+    case 'creative':
+      return 'Artistic high-contrast digital illustration, vibrant warm color scheme, creative metaphoric design, editorial style, cinematic depth, 16:9 aspect ratio, stunning graphic'
+    case 'startup-pitch':
+      return 'Sleek, modern minimalist venture capitalist presentation graphic, clean lines, premium workspace aesthetic, high-end professional design, subtle peach and slate accents, 16:9'
+    case 'bold':
+      return 'Bold high-contrast geometric artwork, striking color blocking, clean professional graphic design, modern typography-friendly art, high impact visual, 16:9 aspect ratio'
+    case 'minimalist':
+    case 'minimal':
+      return 'Elegant clean minimalist design, spacious layout, premium monochrome with subtle warm undertone accent, professional line art or low poly graphic, 16:9 widescreen'
+    case 'education':
+      return 'Engaging clean informational vector illustration, bright modern color palette, educational presentation style, conceptual diagrams, 16:9 widescreen'
+    case 'dark-mode':
+      return 'Cinematic dark mode presentation illustration, deep dark slate backdrop, glowing elegant highlights, premium tech brand aesthetic, moody lighting, 16:9 aspect ratio'
+    case 'professional':
+    case 'corporate':
+    default:
+      return 'Professional corporate business presentation slide infographic art, premium clean abstract shapes, corporate amber and dark slate color scheme, high quality, 16:9 aspect ratio'
+  }
+}
+
+async function createSlideImageAndUpload(params: {
+  presentationId: string
+  slideOrder: number
+  imagePrompt: string
+  slideTitle: string
+  slideContent: string
+  style?: string | null
+}): Promise<string> {
+  try {
+    console.log('[Image Pipeline] Starting generation and upload', {
+      presentationId: params.presentationId,
+      slideOrder: params.slideOrder,
+      promptPreview: params.imagePrompt.slice(0, 80),
+    })
+
+    const prefix = getStylePromptPrefix(params.style)
+    const enrichedPrompt = `${prefix}. ${params.imagePrompt}. High quality, presentation visual, no text, no letters, no logos, 16:9 aspect ratio.`
+
+    const base64Image = await generateImageFromPrompt(enrichedPrompt)
+    if (!base64Image) {
+      console.warn('[Image Pipeline] Image generation bypassed or failed. Falling back to placeholder.')
+      const fallback = getPlaceholderImage(params.slideTitle, params.slideContent, params.imagePrompt)
+      console.log(`[Image Pipeline] Using fallback placeholder for slide ${params.slideOrder}: ${fallback}`)
+      return fallback
+    }
+
+    const fileName = sanitizeFileName(
+      `slide-${params.presentationId}-${params.slideOrder}`,
+    )
+
+    console.log('[Image Pipeline] Image generated, uploading base64 to ImageKit', {
+      fileName,
+      sizeBytes: base64Image.length,
+    })
+
+    const imageUrl = await uploadBase64ToImageKit({
+      base64Image,
+      fileName,
+      folderPath: `/presentations/${sanitizeFileName(params.presentationId)}`,
+    })
+
+    console.log('[Image Pipeline] Successfully completed upload flow', {
+      presentationId: params.presentationId,
+      slideOrder: params.slideOrder,
+      imageUrl,
+    })
+
+    return imageUrl
+  } catch (error) {
+    console.error('[Image Pipeline] Slide image generation/upload failed. Falling back to placeholder.', {
+      presentationId: params.presentationId,
+      slideOrder: params.slideOrder,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    const fallback = getPlaceholderImage(params.slideTitle, params.slideContent, params.imagePrompt)
+    console.log(`[Image Pipeline] Using fallback placeholder for slide ${params.slideOrder}: ${fallback}`)
+    return fallback
   }
 }
 
@@ -270,61 +360,7 @@ async function uploadBase64ToImageKit(params: {
   throw lastError
 }
 
-async function createSlideImageAndUpload(params: {
-  presentationId: string
-  slideOrder: number
-  imagePrompt: string
-  slideTitle: string
-  slideContent: string
-}): Promise<string> {
-  try {
-    console.log('[Image Pipeline] Starting generation and upload', {
-      presentationId: params.presentationId,
-      slideOrder: params.slideOrder,
-      promptPreview: params.imagePrompt.slice(0, 80),
-    })
 
-    const base64Image = await generateImageFromPrompt(params.imagePrompt)
-    if (!base64Image) {
-      console.warn('[Image Pipeline] Image generation bypassed or failed. Falling back to placeholder.')
-      const fallback = getPlaceholderImage(params.slideTitle, params.slideContent, params.imagePrompt)
-      console.log(`[Image Pipeline] Using fallback placeholder for slide ${params.slideOrder}: ${fallback}`)
-      return fallback
-    }
-
-    const fileName = sanitizeFileName(
-      `slide-${params.presentationId}-${params.slideOrder}`,
-    )
-
-    console.log('[Image Pipeline] Image generated, uploading base64 to ImageKit', {
-      fileName,
-      sizeBytes: base64Image.length,
-    })
-
-    const imageUrl = await uploadBase64ToImageKit({
-      base64Image,
-      fileName,
-      folderPath: `/presentations/${sanitizeFileName(params.presentationId)}`,
-    })
-
-    console.log('[Image Pipeline] Successfully completed upload flow', {
-      presentationId: params.presentationId,
-      slideOrder: params.slideOrder,
-      imageUrl,
-    })
-
-    return imageUrl
-  } catch (error) {
-    console.error('[Image Pipeline] Slide image generation/upload failed. Falling back to placeholder.', {
-      presentationId: params.presentationId,
-      slideOrder: params.slideOrder,
-      error: error instanceof Error ? error.message : String(error),
-    })
-    const fallback = getPlaceholderImage(params.slideTitle, params.slideContent, params.imagePrompt)
-    console.log(`[Image Pipeline] Using fallback placeholder for slide ${params.slideOrder}: ${fallback}`)
-    return fallback
-  }
-}
 
 const slideSchema = z.object({
   heading: z.string().describe('Concise slide title (max 6-8 words)'),
@@ -492,6 +528,7 @@ Ensure the presentation has a clear progression from introduction, core problem/
             imagePrompt: slide.imagePrompt,
             slideTitle: slide.heading,
             slideContent: slide.body ?? slide.bullets?.join(' ') ?? '',
+            style: presentation.style,
           })
         })
         uploadedImageUrls.push(url)

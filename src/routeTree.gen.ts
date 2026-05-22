@@ -9,15 +9,35 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as ExportRouteImport } from './routes/export'
+import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as AuthRouteRouteImport } from './routes/_auth/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as PresentationsIndexRouteImport } from './routes/presentations.index'
 import { Route as PresentationsPresentationIdRouteImport } from './routes/presentations.$presentationId'
 import { Route as ApiTestImageRouteImport } from './routes/api/test-image'
 import { Route as ApiInngestRouteImport } from './routes/api/inngest'
+import { Route as AuthSignupRouteImport } from './routes/_auth/signup'
 import { Route as AuthLoginRouteImport } from './routes/_auth/login'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExportRoute = ExportRouteImport.update({
+  id: '/export',
+  path: '/export',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AboutRoute = AboutRouteImport.update({
   id: '/about',
   path: '/about',
@@ -30,6 +50,11 @@ const AuthRouteRoute = AuthRouteRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PresentationsIndexRoute = PresentationsIndexRouteImport.update({
+  id: '/presentations/',
+  path: '/presentations/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PresentationsPresentationIdRoute =
@@ -48,6 +73,11 @@ const ApiInngestRoute = ApiInngestRouteImport.update({
   path: '/api/inngest',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthSignupRoute = AuthSignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
+  getParentRoute: () => AuthRouteRoute,
+} as any)
 const AuthLoginRoute = AuthLoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -62,19 +92,29 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
+  '/dashboard': typeof DashboardRoute
+  '/export': typeof ExportRoute
+  '/settings': typeof SettingsRoute
   '/login': typeof AuthLoginRoute
+  '/signup': typeof AuthSignupRoute
   '/api/inngest': typeof ApiInngestRoute
   '/api/test-image': typeof ApiTestImageRoute
   '/presentations/$presentationId': typeof PresentationsPresentationIdRoute
+  '/presentations/': typeof PresentationsIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
+  '/dashboard': typeof DashboardRoute
+  '/export': typeof ExportRoute
+  '/settings': typeof SettingsRoute
   '/login': typeof AuthLoginRoute
+  '/signup': typeof AuthSignupRoute
   '/api/inngest': typeof ApiInngestRoute
   '/api/test-image': typeof ApiTestImageRoute
   '/presentations/$presentationId': typeof PresentationsPresentationIdRoute
+  '/presentations': typeof PresentationsIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesById {
@@ -82,10 +122,15 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_auth': typeof AuthRouteRouteWithChildren
   '/about': typeof AboutRoute
+  '/dashboard': typeof DashboardRoute
+  '/export': typeof ExportRoute
+  '/settings': typeof SettingsRoute
   '/_auth/login': typeof AuthLoginRoute
+  '/_auth/signup': typeof AuthSignupRoute
   '/api/inngest': typeof ApiInngestRoute
   '/api/test-image': typeof ApiTestImageRoute
   '/presentations/$presentationId': typeof PresentationsPresentationIdRoute
+  '/presentations/': typeof PresentationsIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRouteTypes {
@@ -93,29 +138,44 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/about'
+    | '/dashboard'
+    | '/export'
+    | '/settings'
     | '/login'
+    | '/signup'
     | '/api/inngest'
     | '/api/test-image'
     | '/presentations/$presentationId'
+    | '/presentations/'
     | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/about'
+    | '/dashboard'
+    | '/export'
+    | '/settings'
     | '/login'
+    | '/signup'
     | '/api/inngest'
     | '/api/test-image'
     | '/presentations/$presentationId'
+    | '/presentations'
     | '/api/auth/$'
   id:
     | '__root__'
     | '/'
     | '/_auth'
     | '/about'
+    | '/dashboard'
+    | '/export'
+    | '/settings'
     | '/_auth/login'
+    | '/_auth/signup'
     | '/api/inngest'
     | '/api/test-image'
     | '/presentations/$presentationId'
+    | '/presentations/'
     | '/api/auth/$'
   fileRoutesById: FileRoutesById
 }
@@ -123,14 +183,39 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRouteRoute: typeof AuthRouteRouteWithChildren
   AboutRoute: typeof AboutRoute
+  DashboardRoute: typeof DashboardRoute
+  ExportRoute: typeof ExportRoute
+  SettingsRoute: typeof SettingsRoute
   ApiInngestRoute: typeof ApiInngestRoute
   ApiTestImageRoute: typeof ApiTestImageRoute
   PresentationsPresentationIdRoute: typeof PresentationsPresentationIdRoute
+  PresentationsIndexRoute: typeof PresentationsIndexRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/export': {
+      id: '/export'
+      path: '/export'
+      fullPath: '/export'
+      preLoaderRoute: typeof ExportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/about': {
       id: '/about'
       path: '/about'
@@ -150,6 +235,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/presentations/': {
+      id: '/presentations/'
+      path: '/presentations'
+      fullPath: '/presentations/'
+      preLoaderRoute: typeof PresentationsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/presentations/$presentationId': {
@@ -173,6 +265,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInngestRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_auth/signup': {
+      id: '/_auth/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof AuthSignupRouteImport
+      parentRoute: typeof AuthRouteRoute
+    }
     '/_auth/login': {
       id: '/_auth/login'
       path: '/login'
@@ -192,10 +291,12 @@ declare module '@tanstack/react-router' {
 
 interface AuthRouteRouteChildren {
   AuthLoginRoute: typeof AuthLoginRoute
+  AuthSignupRoute: typeof AuthSignupRoute
 }
 
 const AuthRouteRouteChildren: AuthRouteRouteChildren = {
   AuthLoginRoute: AuthLoginRoute,
+  AuthSignupRoute: AuthSignupRoute,
 }
 
 const AuthRouteRouteWithChildren = AuthRouteRoute._addFileChildren(
@@ -206,9 +307,13 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRouteRoute: AuthRouteRouteWithChildren,
   AboutRoute: AboutRoute,
+  DashboardRoute: DashboardRoute,
+  ExportRoute: ExportRoute,
+  SettingsRoute: SettingsRoute,
   ApiInngestRoute: ApiInngestRoute,
   ApiTestImageRoute: ApiTestImageRoute,
   PresentationsPresentationIdRoute: PresentationsPresentationIdRoute,
+  PresentationsIndexRoute: PresentationsIndexRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport

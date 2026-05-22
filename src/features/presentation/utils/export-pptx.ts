@@ -103,27 +103,49 @@ export async function exportPresentationToPPTX(
     // Process layout types
     switch (layoutType) {
       case 'hero': {
+        // Full bleed background image
+        pptxSlide.addImage({
+          path: imagePath,
+          x: 0,
+          y: 0,
+          w: 10,
+          h: 5.625,
+        })
+
+        // Draw transparent glassmorphic overlay box
+        pptxSlide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
+          x: 1.5,
+          y: 1.1,
+          w: 7.0,
+          h: 3.425,
+          fill: { color: cardColor, transparency: 15 },
+          line: { color: cardBorderColor, width: 1.5 },
+        })
+
+        // Title inside the overlay box
         pptxSlide.addText(slide.title, {
-          x: 1.0,
-          y: 1.4,
-          w: 8.0,
-          h: 1.5,
-          fontSize: 34,
+          x: 1.7,
+          y: 1.3,
+          w: 6.6,
+          h: 1.3,
+          fontSize: 30,
           fontFace: fontName,
-          color: titleColor,
+          color: 'FFFFFF', // Premium high contrast white text for dark glass overlay
           bold: true,
           align: 'center',
           valign: 'middle',
         })
+
+        // Body text inside the overlay box
         if (contentData.body) {
           pptxSlide.addText(contentData.body, {
-            x: 1.5,
-            y: 3.0,
-            w: 7.0,
-            h: 1.6,
-            fontSize: 15,
+            x: 1.7,
+            y: 2.7,
+            w: 6.6,
+            h: 1.5,
+            fontSize: 14,
             fontFace: fontName,
-            color: textColor,
+            color: 'ECEFF1',
             align: 'center',
             valign: 'top',
           })
@@ -317,7 +339,7 @@ export async function exportPresentationToPPTX(
         if (contentData.stats && contentData.stats.length > 0) {
           contentData.stats.slice(0, 2).forEach((stat, idx) => {
             const sX = 0.6 + (idx * 2.3)
-            
+
             // Background card box
             pptxSlide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
               x: sX,
@@ -356,13 +378,13 @@ export async function exportPresentationToPPTX(
           })
         }
 
-        // Side Image
+        // Side Image - Widescreen 16:9 aspect ratio
         pptxSlide.addImage({
           path: imagePath,
-          x: 5.4,
-          y: 0.8,
-          w: 4.0,
-          h: 4.0,
+          x: 5.3,
+          y: 1.5,
+          w: 4.1,
+          h: 2.3,
         })
         break
       }
@@ -496,13 +518,13 @@ export async function exportPresentationToPPTX(
           valign: 'top',
         })
 
-        // Standard Slide Image
+        // Standard Slide Image - Widescreen 16:9 aspect ratio
         pptxSlide.addImage({
           path: imagePath,
-          x: 5.4,
-          y: 0.8,
-          w: 4.0,
-          h: 4.0,
+          x: 5.3,
+          y: 1.5,
+          w: 4.1,
+          h: 2.3,
         })
         break
       }

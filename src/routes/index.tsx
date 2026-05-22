@@ -40,28 +40,29 @@ type HomeFormState = {
   layout: (typeof LAYOUT_OPTIONS)[number]['value']
 }
 
-export const Route = createFileRoute('/')({
-  beforeLoad: async ({ location }) => {
-    const session = await getSession()
+import LandingPage from '#/components/landing-page'
 
-    if (!session) {
+export const Route = createFileRoute('/')({
+  beforeLoad: async () => {
+    const session = await getSession()
+    if (session) {
       throw redirect({
-        to: '/login',
-        search: {
-          redirect: location.href,
-        },
+        to: '/dashboard',
       })
     }
-
     return {
-      user: session.user,
+      user: null,
     }
   },
 
-  component: HomePage,
+  component: IndexRouteComponent,
 })
 
-function HomePage() {
+function IndexRouteComponent() {
+  return <LandingPage />
+}
+
+export function HomePage() {
   const navigate = useNavigate()
 
   const queryClient = useQueryClient()

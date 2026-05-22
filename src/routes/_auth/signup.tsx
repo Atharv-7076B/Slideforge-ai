@@ -9,7 +9,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { Loader2, Presentation, Eye, EyeOff } from 'lucide-react'
 
-export const Route = createFileRoute('/_auth/login')({
+export const Route = createFileRoute('/_auth/signup')({
   beforeLoad: async () => {
     const session = await getSession()
     if (session) {
@@ -21,18 +21,19 @@ export const Route = createFileRoute('/_auth/login')({
   validateSearch: z.object({
     redirect: z.string().optional(),
   }),
-  component: LoginPage,
+  component: SignupPage,
 })
 
-function LoginPage() {
+function SignupPage() {
   const { redirect: redirectTo } = Route.useSearch()
   const navigate = useNavigate()
   const router = useRouter()
 
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({})
+  const [errors, setErrors] = useState<{ name?: string; email?: string; password?: string }>({})
   const [isSubmitting, setIsSubmitting] = useState<'credentials' | 'github' | 'google' | null>(null)
 
   const handleSocialLogin = async (provider: 'github' | 'google') => {
@@ -42,7 +43,7 @@ function LoginPage() {
         provider,
         fetchOptions: {
           onSuccess: () => {
-            toast.success('Logged in successfully')
+            toast.success('Account created successfully')
             setIsSubmitting(null)
             const next = toInternalPath(redirectTo) ?? '/dashboard'
             if (next === '/' || next === '/dashboard' || next.startsWith('/login') || next.startsWith('/signup')) {
@@ -52,20 +53,26 @@ function LoginPage() {
             }
           },
           onError: ({ error }) => {
-            toast.error(error.message || 'Login failed. Please try again')
+            toast.error(error.message || 'Signup failed. Please try again')
             setIsSubmitting(null)
           },
         },
       })
     } catch (error) {
-      toast.error('Login failed. Please try again')
+      toast.error('Signup failed. Please try again')
       setIsSubmitting(null)
     }
   }
 
   const validateForm = () => {
-    const newErrors: { email?: string; password?: string } = {}
+    const newErrors: { name?: string; email?: string; password?: string } = {}
     
+    if (!name) {
+      newErrors.name = 'Full name is required'
+    } else if (name.trim().length < 2) {
+      newErrors.name = 'Name must be at least 2 characters'
+    }
+
     if (!email) {
       newErrors.email = 'Email is required'
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -82,7 +89,7 @@ function LoginPage() {
     return Object.keys(newErrors).length === 0
   }
 
-  const handleCredentialsLogin = async (e: React.FormEvent) => {
+  const handleCredentialsSignup = async (e: React.FormEvent) => {
     e.preventDefault()
     
     if (!validateForm()) {
@@ -92,12 +99,13 @@ function LoginPage() {
 
     try {
       setIsSubmitting('credentials')
-      await authClient.signIn.email({
+      await authClient.signUp.email({
         email,
         password,
+        name,
         fetchOptions: {
           onSuccess: () => {
-            toast.success('Signed in successfully!')
+            toast.success('Welcome! Account created successfully.')
             setIsSubmitting(null)
             const next = toInternalPath(redirectTo) ?? '/dashboard'
             if (next === '/' || next === '/dashboard' || next.startsWith('/login') || next.startsWith('/signup')) {
@@ -107,21 +115,20 @@ function LoginPage() {
             }
           },
           onError: ({ error }) => {
-            let errorMsg = 'Failed to sign in. Please check your credentials.'
-            if (error.status === 401 || error.code === 'INVALID_EMAIL_OR_PASSWORD' || error.message?.toLowerCase().includes('credential')) {
-              errorMsg = 'Invalid email or password'
+            let errorMsg = 'Failed to create account. Please try again.'
+            if (error.message?.toLowerCase().includes('already') || error.code === 'USER_ALREADY_EXISTS') {
+              errorMsg = 'An account with this email already exists'
             }
             toast.error(errorMsg)
             setErrors({
-              email: errorMsg.includes('email') || errorMsg.includes('Invalid') ? errorMsg : undefined,
-              password: errorMsg.includes('password') || errorMsg.includes('Invalid') ? errorMsg : undefined,
+              email: errorMsg.includes('exists') || errorMsg.includes('email') ? errorMsg : undefined,
             })
             setIsSubmitting(null)
           },
         },
       })
     } catch (error) {
-      toast.error('Failed to sign in. Please try again.')
+      toast.error('Failed to create account. Please try again.')
       setIsSubmitting(null)
     }
   }
@@ -153,10 +160,10 @@ function LoginPage() {
           
           <div className="text-center space-y-2">
             <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">
-              Welcome Back
+              Create Your Account
             </h1>
             <p className="text-zinc-500 dark:text-zinc-400 text-sm">
-              Continue building AI-powered presentations.
+              Start generating presentations with AI.
             </p>
           </div>
 
@@ -164,7 +171,7 @@ function LoginPage() {
           <div className="grid grid-cols-2 gap-3 pt-2">
             <button
               type="button"
-              className="h-10 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 bg-white hover:bg-zinc-50 dark:bg-zinc-900/40 dark:hover:bg-zinc-900 text-zinc-750 dark:text-zinc-100 font-semibold flex items-center justify-center gap-2.5 transition-all text-xs disabled:opacity-50 px-3 cursor-pointer"
+              className="h-10 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 bg-white hover:bg-zinc-50 dark:bg-zinc-900/40 dark:hover:bg-zinc-900 text-zinc-750 dark:text-zinc-100 font-semibold flex items-center justify-center gap-2.5 transition-all text-xs disabled:opacity-50 px-3"
               onClick={() => handleSocialLogin('github')}
               disabled={isSubmitting !== null}
             >
@@ -180,7 +187,7 @@ function LoginPage() {
 
             <button
               type="button"
-              className="h-10 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 bg-white hover:bg-zinc-50 dark:bg-zinc-900/40 dark:hover:bg-zinc-900 text-zinc-750 dark:text-zinc-100 font-semibold flex items-center justify-center gap-2.5 transition-all text-xs disabled:opacity-50 px-3 cursor-pointer"
+              className="h-10 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 bg-white hover:bg-zinc-50 dark:bg-zinc-900/40 dark:hover:bg-zinc-900 text-zinc-750 dark:text-zinc-100 font-semibold flex items-center justify-center gap-2.5 transition-all text-xs disabled:opacity-50 px-3"
               onClick={() => handleSocialLogin('google')}
               disabled={isSubmitting !== null}
             >
@@ -217,8 +224,35 @@ function LoginPage() {
             <div className="h-[1px] bg-zinc-200 dark:bg-zinc-800/80 w-[42%]" />
           </div>
 
-          {/* Credentials Login Form */}
-          <form onSubmit={handleCredentialsLogin} className="space-y-4 text-left">
+          {/* Credentials Signup Form */}
+          <form onSubmit={handleCredentialsSignup} className="space-y-4 text-left">
+            <div className="space-y-1.5">
+              <label htmlFor="name" className="text-xs font-semibold text-zinc-550 dark:text-zinc-400">
+                Full Name
+              </label>
+              <input
+                id="name"
+                type="text"
+                placeholder="John Doe"
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value)
+                  if (errors.name) setErrors((prev) => ({ ...prev, name: undefined }))
+                }}
+                className={`w-full h-10 px-3.5 rounded-xl border bg-zinc-50/50 dark:bg-zinc-900/50 text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-555 focus:ring-1 transition-all duration-200 outline-none text-sm ${
+                  errors.name
+                    ? 'border-red-500/70 focus:border-red-500 focus:ring-red-500/20'
+                    : 'border-zinc-200 dark:border-zinc-800 focus:border-[#f97316] focus:ring-[#f97316]/30'
+                }`}
+                disabled={isSubmitting !== null}
+              />
+              {errors.name && (
+                <span className="text-[11px] text-red-500 dark:text-red-400 font-medium block animate-fade-in">
+                  {errors.name}
+                </span>
+              )}
+            </div>
+
             <div className="space-y-1.5">
               <label htmlFor="email" className="text-xs font-semibold text-zinc-550 dark:text-zinc-400">
                 Email
@@ -232,7 +266,7 @@ function LoginPage() {
                   setEmail(e.target.value)
                   if (errors.email) setErrors((prev) => ({ ...prev, email: undefined }))
                 }}
-                className={`w-full h-10 px-3.5 rounded-xl border bg-zinc-50/50 dark:bg-zinc-900/50 text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-550 focus:ring-1 transition-all duration-200 outline-none text-sm ${
+                className={`w-full h-10 px-3.5 rounded-xl border bg-zinc-50/50 dark:bg-zinc-900/50 text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-555 focus:ring-1 transition-all duration-200 outline-none text-sm ${
                   errors.email
                     ? 'border-red-500/70 focus:border-red-500 focus:ring-red-500/20'
                     : 'border-zinc-200 dark:border-zinc-800 focus:border-[#f97316] focus:ring-[#f97316]/30'
@@ -247,18 +281,9 @@ function LoginPage() {
             </div>
 
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label htmlFor="password" className="text-xs font-semibold text-zinc-550 dark:text-zinc-400">
-                  Password
-                </label>
-                <button
-                  type="button"
-                  onClick={() => toast.info("Demo forgot password. Contact administrator.")}
-                  className="text-xs font-semibold text-[#f97316] hover:text-[#ea580c] hover:underline cursor-pointer"
-                >
-                  Forgot Password?
-                </button>
-              </div>
+              <label htmlFor="password" className="text-xs font-semibold text-zinc-555 dark:text-zinc-400">
+                Password
+              </label>
               <div className="relative">
                 <input
                   id="password"
@@ -269,7 +294,7 @@ function LoginPage() {
                     setPassword(e.target.value)
                     if (errors.password) setErrors((prev) => ({ ...prev, password: undefined }))
                   }}
-                  className={`w-full h-10 pl-3.5 pr-10 rounded-xl border bg-zinc-50/50 dark:bg-zinc-900/50 text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-550 focus:ring-1 transition-all duration-200 outline-none text-sm ${
+                  className={`w-full h-10 pl-3.5 pr-10 rounded-xl border bg-zinc-50/50 dark:bg-zinc-900/50 text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-555 focus:ring-1 transition-all duration-200 outline-none text-sm ${
                     errors.password
                       ? 'border-red-500/70 focus:border-red-500 focus:ring-red-500/20'
                       : 'border-zinc-200 dark:border-zinc-800 focus:border-[#f97316] focus:ring-[#f97316]/30'
@@ -299,10 +324,10 @@ function LoginPage() {
               {isSubmitting === 'credentials' ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  <span>Signing In...</span>
+                  <span>Creating Account...</span>
                 </>
               ) : (
-                'Sign In'
+                'Create Account'
               )}
             </button>
           </form>
@@ -313,9 +338,9 @@ function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-zinc-500 dark:text-zinc-400">
-          New to SlideForge?{' '}
-          <Link to="/signup" className="text-[#f97316] hover:text-[#ea580c] hover:underline font-semibold transition-colors">
-            Create an account
+          Already have an account?{' '}
+          <Link to="/login" className="text-[#f97316] hover:text-[#ea580c] hover:underline font-semibold transition-colors">
+            Sign In
           </Link>
         </p>
       </motion.div>
