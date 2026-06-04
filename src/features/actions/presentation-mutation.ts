@@ -15,6 +15,7 @@ import { generateSlug } from 'random-word-slugs'
 import { PresentationStatus } from '@prisma/client'
 
 import { inngest } from '#/integrations/inngest/client'
+import { generatePresentationInline } from '#/integrations/inngest/functions'
 
 // Helper function to serialize Presentation with DateTime fields
 function serializePresentation(presentation: any) {
@@ -57,6 +58,7 @@ export const createPresentation = createServerFn({
         },
       })
       console.log('[createPresentation] Created presentation:', presentation.id)
+      let finalPresentation = presentation
       try {
         await inngest.send({
           name: 'presentation/generate',
@@ -65,18 +67,26 @@ export const createPresentation = createServerFn({
           },
         })
         console.log('[createPresentation] Sent to Inngest')
-      } catch (error) {
-        console.error('Failed to publish presentation/generate event', {
+      } catch (error: any) {
+        console.warn('[createPresentation] Failed to publish event to Inngest. Falling back to inline generation.', {
           presentationId: presentation.id,
-          error,
+          error: error?.message || String(error),
         })
-        await prisma.presentation.update({
-          where: { id: presentation.id },
-          data: { status: PresentationStatus.FAILED },
-        })
-        throw error
+        try {
+          await generatePresentationInline(presentation.id)
+          const updated = await prisma.presentation.findUnique({
+            where: { id: presentation.id },
+          })
+          if (updated) {
+            finalPresentation = updated
+          }
+          console.log('[createPresentation] Inline generation fallback completed successfully')
+        } catch (fallbackError) {
+          console.error('[createPresentation] Inline generation fallback failed:', fallbackError)
+          throw fallbackError
+        }
       }
-      const result = serializePresentation(presentation)
+      const result = serializePresentation(finalPresentation)
       console.log('[createPresentation] Returning serialized result')
       return result
     } catch (error) {
@@ -175,16 +185,18 @@ export const regeneratePresentation = createServerFn({
           },
         })
         console.log('[regeneratePresentation] Sent to Inngest')
-      } catch (error) {
-        console.error('Failed to publish presentation/generate event', {
+      } catch (error: any) {
+        console.warn('[regeneratePresentation] Failed to publish event to Inngest. Falling back to inline generation.', {
           presentationId: data.id,
-          error,
+          error: error?.message || String(error),
         })
-        await prisma.presentation.update({
-          where: { id: data.id },
-          data: { status: PresentationStatus.FAILED },
-        })
-        throw error
+        try {
+          await generatePresentationInline(data.id)
+          console.log('[regeneratePresentation] Inline generation fallback completed successfully')
+        } catch (fallbackError) {
+          console.error('[regeneratePresentation] Inline generation fallback failed:', fallbackError)
+          throw fallbackError
+        }
       }
 
       return {

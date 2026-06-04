@@ -636,4 +636,211 @@ Ensure the presentation has a clear progression from introduction, core problem/
   }
 )
 
+export async function generatePresentationInline(presentationId: string) {
+  console.log('[Presentation Generation Inline] Started', { presentationId })
+
+  try {
+    console.log('[Presentation Generation Inline] Fetching presentation data')
+    const presentation = await runDbQueryWithRetry(() => prisma.presentation.findUnique({
+      where: { id: presentationId },
+    }))
+    if (!presentation) throw new Error('Presentation not found')
+    console.log('[Presentation Generation Inline] Presentation fetched', {
+      title: presentation.title,
+      slideCount: presentation.slideCount,
+      style: presentation.style,
+      tone: presentation.tone,
+    })
+
+    console.log('[Presentation Generation Inline] Marking as GENERATING')
+    await runDbQueryWithRetry(() => prisma.presentation.update({
+      where: { id: presentation.id },
+      data: {
+        status: PresentationStatus.GENERATING,
+      },
+    }))
+
+    console.log('[Presentation Generation Inline] Starting slide content generation')
+    validateRequiredAiEnv()
+
+    const systemPrompt = `You are a world-class presentation designer and visual copywriter.
+You will write a compelling, narrative-driven presentation on the given topic.
+
+Your ONLY output is a valid JSON object — no markdown fences, no preamble, no explanation.
+
+## Presentation context
+- Topic: "${presentation.prompt}"
+- Theme/Style: ${presentation.style}
+- Tone: ${presentation.tone}
+- Slide count: ${presentation.slideCount}
+
+## Slide layout strategy
+To make the presentation feel professional and cinematic like Gamma.app, vary layoutType dynamically across slides. Avoid repeating the same layout back-to-back.
+Choose layouts based on slide purpose:
+- Slide 1 (Intro): Must be "hero" layout.
+- Slides 2-3 (Problem/Context): Use "split-left" or "split-right".
+- Slide 4 (Key Insight/Quote): Use "quote" to break the pace.
+- Slide 5 (Core Features/Pillars): Use "grid" (columns).
+- Slide 6 (Performance/Data): Use "stats" (metrics).
+- Slide 7 (Visual/Impact): Use "full-image" with overlaid text.
+- Slide 8 (Conclusion/CTA): Use "hero" or "split" to wrap up.
+
+## Layout specifications (Fill appropriate fields)
+- If layoutType is "quote": Fill "quoteText" and "quoteAuthor".
+- If layoutType is "stats": Fill "stats" array (2-3 items).
+- If layoutType is "grid": Fill "gridItems" array (exactly 3 items).
+- If layoutType is "split-left" or "split-right": Fill "body" or "bullets".
+- If layoutType is "standard": Fill "body" or "bullets".
+
+## imagePrompt requirements (critical)
+Create a detailed prompt for generating an image that illustrates the slide's core metaphor.
+- Do NOT generate generic or text-heavy prompts.
+- Describe the setting, lighting, color tone, style matching "${presentation.style}", and cinematic details.
+- Avoid text, letters, watermarks, screens, or phones in images.
+- Example: "A sleek workspace overlooking a neon fujimi skyline, cinematic lighting, fuchsia and slate accents, futuristic illustration, ultra detailed, 16:9"
+
+## Narrative structure
+Ensure the presentation has a clear progression from introduction, core problem/opportunity, detailed solution/arguments, data/proof points, and a strong conclusion.`
+
+    const result = await generateText({
+      model: google('gemini-2.5-flash'),
+      output: Output.object({ schema: slideResponseSchema }),
+      system: systemPrompt,
+      prompt: presentation.prompt,
+    })
+
+    const { slides } = result.output
+
+    console.log('[Presentation Generation Inline] Slide content generated successfully', {
+      slideCount: slides.length,
+    })
+
+    console.log('[Presentation Generation Inline] Deleting old slides')
+    await runDbQueryWithRetry(() => prisma.slide.deleteMany({
+      where: { presentationId: presentation.id },
+    }))
+
+    const imageKitAvailable = await checkImageKitAvailability()
+    console.log('[Presentation Generation Inline] ImageKit availability:', imageKitAvailable)
+
+    const uploadedImageUrls: string[] = []
+    for (let index = 0; index < slides.length; index++) {
+      const slide = slides[index]
+      const url = await (async () => {
+        if (!imageKitAvailable) {
+          console.log('[Presentation Generation Inline] Skipping image generation because ImageKit is unavailable. Using placeholder for slide:', index)
+          return getPlaceholderImage(
+            slide.heading,
+            slide.body ?? slide.bullets?.join(' ') ?? '',
+            slide.imagePrompt
+          )
+        }
+        return createSlideImageAndUpload({
+          presentationId,
+          slideOrder: index,
+          imagePrompt: slide.imagePrompt,
+          slideTitle: slide.heading,
+          slideContent: slide.body ?? slide.bullets?.join(' ') ?? '',
+          style: presentation.style,
+        })
+      })()
+      uploadedImageUrls.push(url)
+    }
+
+    const data = slides.map((slide, index) => {
+      const layoutType = slide.layoutType || 'standard'
+      let body = slide.body || ''
+      let bullets = slide.bullets || []
+      let quoteText = slide.quoteText || ''
+      let quoteAuthor = slide.quoteAuthor || ''
+      let stats = slide.stats || []
+      let gridItems = slide.gridItems || []
+
+      if (layoutType === 'quote' && !quoteText) {
+        quoteText = body || 'A powerful strategic perspective.'
+        quoteAuthor = quoteAuthor || 'Leader'
+      }
+      if (layoutType === 'stats' && stats.length === 0) {
+        stats = [
+          { value: '75%', label: 'Projected growth index' },
+          { value: '2x', label: 'Operational speed improvement' }
+        ]
+      }
+      if (layoutType === 'grid' && gridItems.length === 0) {
+        gridItems = [
+          { title: 'Core Advantage 1', description: 'Detailed presentation pillar highlight.' },
+          { title: 'Core Advantage 2', description: 'Detailed presentation pillar highlight.' },
+          { title: 'Core Advantage 3', description: 'Detailed presentation pillar highlight.' }
+        ]
+      }
+      if (layoutType === 'standard' && !body && bullets.length === 0) {
+        body = 'Key insights and summary metrics are shown on this page.'
+      }
+
+      const contentJson = JSON.stringify({
+        layoutType,
+        body,
+        bullets,
+        quoteText,
+        quoteAuthor,
+        stats,
+        gridItems,
+      })
+
+      return {
+        presentationId,
+        order: index,
+        title: slide.heading.trim() || `Slide ${index + 1}`,
+        content: contentJson,
+        notes: slide.speakerNotes?.trim() || null,
+        imagePrompt: slide.imagePrompt || null,
+        imageUrl: uploadedImageUrls[index] || null,
+      }
+    })
+
+    await runDbQueryWithRetry(() => prisma.slide.createMany({ data }))
+    console.log('[Presentation Generation Inline] Slides created in database', {
+      presentationId,
+      slideCount: data.length,
+    })
+
+    console.log('[Presentation Generation Inline] Marking as COMPLETED')
+    await runDbQueryWithRetry(() => prisma.presentation.update({
+      where: { id: presentation.id },
+      data: {
+        status: PresentationStatus.COMPLETED,
+      },
+    }))
+
+    console.log('[Presentation Generation Inline] Successfully completed', {
+      presentationId,
+      slideCount: slides.length,
+    })
+    return { success: true, slideCount: slides.length }
+  } catch (error) {
+    console.error('[Presentation Generation Inline] Failed with error', {
+      presentationId,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    })
+    try {
+      await runDbQueryWithRetry(() => prisma.presentation.update({
+        where: { id: presentationId },
+        data: { status: PresentationStatus.FAILED },
+      }))
+      console.log('[Presentation Generation Inline] Marked as FAILED')
+    } catch (updateError) {
+      console.error('[Presentation Generation Inline] Failed to mark as FAILED', {
+        presentationId,
+        error:
+          updateError instanceof Error
+            ? updateError.message
+            : String(updateError),
+      })
+    }
+    throw error
+  }
+}
+
+
 
