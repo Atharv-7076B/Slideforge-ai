@@ -34,40 +34,53 @@ export const createPresentation = createServerFn({
   .inputValidator((data: unknown) => createPresentationInputSchema.parse(data))
   .middleware([authFnMiddleware])
   .handler(async ({ data, context }) => {
-    const userId = context?.session?.user?.id
-
-    if (!userId) {
-      throw new Error('Unauthorized')
-    }
-    const presentation = await prisma.presentation.create({
-      data: {
-        userId,
-        title: generateSlug(),
-        prompt: data.prompt,
-        slideCount: data.slideCount,
-        style: data.style,
-        tone: data.tone,
-        layout: data.layout,
-        status: PresentationStatus.GENERATING,
-      },
-    })
     try {
-      await inngest.send({
-        name: 'presentation/generate',
+      console.log(
+        '[createPresentation] Called with prompt length:',
+        data.prompt.length,
+      )
+      const userId = context?.session?.user?.id
+
+      if (!userId) {
+        throw new Error('Unauthorized')
+      }
+      const presentation = await prisma.presentation.create({
         data: {
-          presentationId: presentation.id,
+          userId,
+          title: generateSlug(),
+          prompt: data.prompt,
+          slideCount: data.slideCount,
+          style: data.style,
+          tone: data.tone,
+          layout: data.layout,
+          status: PresentationStatus.GENERATING,
         },
       })
-      return serializePresentation(presentation)
+      console.log('[createPresentation] Created presentation:', presentation.id)
+      try {
+        await inngest.send({
+          name: 'presentation/generate',
+          data: {
+            presentationId: presentation.id,
+          },
+        })
+        console.log('[createPresentation] Sent to Inngest')
+      } catch (error) {
+        console.error('Failed to publish presentation/generate event', {
+          presentationId: presentation.id,
+          error,
+        })
+        await prisma.presentation.update({
+          where: { id: presentation.id },
+          data: { status: PresentationStatus.FAILED },
+        })
+        throw error
+      }
+      const result = serializePresentation(presentation)
+      console.log('[createPresentation] Returning serialized result')
+      return result
     } catch (error) {
-      console.error('Failed to publish presentation/generate event', {
-        presentationId: presentation.id,
-        error,
-      })
-      await prisma.presentation.update({
-        where: { id: presentation.id },
-        data: { status: PresentationStatus.FAILED },
-      })
+      console.error('[createPresentation] FAILED:', error)
       throw error
     }
   })
@@ -76,35 +89,51 @@ export const updatePresentation = createServerFn({ method: 'POST' })
   .inputValidator((data: unknown) => updatePresentationInputSchema.parse(data))
   .middleware([authFnMiddleware])
   .handler(async ({ data, context }) => {
-    const userId = context?.session.user?.id
-    const { id, ...patch } = data
-    const existing = await prisma.presentation.findFirst({
-      where: { id, userId },
-    })
-    if (!existing) throw new Error('Presentation not found')
-    const updateData = patch
+    try {
+      console.log('[updatePresentation] Called with id:', data.id)
+      const userId = context?.session.user?.id
+      const { id, ...patch } = data
+      const existing = await prisma.presentation.findFirst({
+        where: { id, userId },
+      })
+      if (!existing) throw new Error('Presentation not found')
+      const updateData = patch
 
-    const updated = await prisma.presentation.update({
-      where: { id, userId },
-      data: updateData,
-    })
-    return serializePresentation(updated)
+      const updated = await prisma.presentation.update({
+        where: { id, userId },
+        data: updateData,
+      })
+      console.log('[updatePresentation] Updated presentation:', id)
+      const result = serializePresentation(updated)
+      console.log('[updatePresentation] Returning serialized result')
+      return result
+    } catch (error) {
+      console.error('[updatePresentation] FAILED:', error)
+      throw error
+    }
   })
 
 export const deletePresentation = createServerFn({ method: 'POST' })
   .inputValidator((data: unknown) => presentationIdInputSchema.parse(data))
   .middleware([authFnMiddleware])
   .handler(async ({ data, context }) => {
-    const userId = context?.session.user?.id
-    const existing = await prisma.presentation.findFirst({
-      where: { id: data.id, userId },
-    })
-    if (!existing) throw new Error('Not found')
-    await prisma.presentation.delete({
-      where: { id: data.id },
-    })
-    return {
-      ok: true as const,
+    try {
+      console.log('[deletePresentation] Called with id:', data.id)
+      const userId = context?.session.user?.id
+      const existing = await prisma.presentation.findFirst({
+        where: { id: data.id, userId },
+      })
+      if (!existing) throw new Error('Not found')
+      await prisma.presentation.delete({
+        where: { id: data.id },
+      })
+      console.log('[deletePresentation] Deleted presentation:', data.id)
+      return {
+        ok: true as const,
+      }
+    } catch (error) {
+      console.error('[deletePresentation] FAILED:', error)
+      throw error
     }
   })
 
@@ -114,47 +143,55 @@ export const regeneratePresentation = createServerFn({
   .inputValidator((data: unknown) => updatePresentationInputSchema.parse(data))
   .middleware([authFnMiddleware])
   .handler(async ({ data, context }) => {
-    const userId = context?.session?.user?.id
-
-    const existing = await prisma.presentation.findFirst({
-      where: {
-        id: data.id,
-        userId,
-      },
-    })
-
-    if (!existing) {
-      throw new Error('Presentation not found')
-    }
-
-    await prisma.presentation.update({
-      where: {
-        id: data.id,
-      },
-      data: {
-        status: PresentationStatus.GENERATING,
-      },
-    })
     try {
-      await inngest.send({
-        name: 'presentation/generate',
-        data: {
-          presentationId: data.id,
+      console.log('[regeneratePresentation] Called with id:', data.id)
+      const userId = context?.session?.user?.id
+
+      const existing = await prisma.presentation.findFirst({
+        where: {
+          id: data.id,
+          userId,
         },
       })
-    } catch (error) {
-      console.error('Failed to publish presentation/generate event', {
-        presentationId: data.id,
-        error,
-      })
-      await prisma.presentation.update({
-        where: { id: data.id },
-        data: { status: PresentationStatus.FAILED },
-      })
-      throw error
-    }
 
-    return {
-      ok: true as const,
+      if (!existing) {
+        throw new Error('Presentation not found')
+      }
+
+      await prisma.presentation.update({
+        where: {
+          id: data.id,
+        },
+        data: {
+          status: PresentationStatus.GENERATING,
+        },
+      })
+      console.log('[regeneratePresentation] Updated status to GENERATING')
+      try {
+        await inngest.send({
+          name: 'presentation/generate',
+          data: {
+            presentationId: data.id,
+          },
+        })
+        console.log('[regeneratePresentation] Sent to Inngest')
+      } catch (error) {
+        console.error('Failed to publish presentation/generate event', {
+          presentationId: data.id,
+          error,
+        })
+        await prisma.presentation.update({
+          where: { id: data.id },
+          data: { status: PresentationStatus.FAILED },
+        })
+        throw error
+      }
+
+      return {
+        ok: true as const,
+      }
+    } catch (error) {
+      console.error('[regeneratePresentation] FAILED:', error)
+      throw error
     }
   })

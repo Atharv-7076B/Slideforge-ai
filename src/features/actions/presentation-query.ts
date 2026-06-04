@@ -24,28 +24,53 @@ export const getPresentationWithSLiedes = createServerFn({ method: 'GET' })
   .inputValidator((data) => presentationIdInputSchema.parse(data))
   .middleware([authMiddleware])
   .handler(async ({ data, context }) => {
-    const userId = context?.session?.user?.id
-    const row = await prisma.presentation.findFirst({
-      where: {
-        id: data.id,
-        userId,
-      },
-      include: {
-        slides: {
-          orderBy: { order: 'asc' },
+    try {
+      console.log('[getPresentationWithSLiedes] Called with id:', data.id)
+      const userId = context?.session?.user?.id
+      const row = await prisma.presentation.findFirst({
+        where: {
+          id: data.id,
+          userId,
         },
-      },
-    })
-    return serializePresentation(row)
+        include: {
+          slides: {
+            orderBy: { order: 'asc' },
+          },
+        },
+      })
+      console.log('[getPresentationWithSLiedes] Found presentation:', {
+        id: row?.id,
+        slideCount: row?.slides?.length,
+      })
+      const result = serializePresentation(row)
+      console.log('[getPresentationWithSLiedes] Returning serialized result')
+      return result
+    } catch (error) {
+      console.error('[getPresentationWithSLiedes] FAILED:', error)
+      throw error
+    }
   })
 
 export const listPresentations = createServerFn({ method: 'GET' })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const userId = context?.session?.user?.id
-    const presentations = await prisma.presentation.findMany({
-      where: { userId },
-      orderBy: { updatedAt: 'desc' },
-    })
-    return presentations.map(serializePresentation)
+    try {
+      console.log('[listPresentations] Called')
+      const userId = context?.session?.user?.id
+      console.log('[listPresentations] userId:', userId)
+      const presentations = await prisma.presentation.findMany({
+        where: { userId },
+        orderBy: { updatedAt: 'desc' },
+      })
+      console.log(
+        '[listPresentations] Found presentations:',
+        presentations.length,
+      )
+      const result = presentations.map(serializePresentation)
+      console.log('[listPresentations] Returning serialized results')
+      return result
+    } catch (error) {
+      console.error('[listPresentations] FAILED:', error)
+      throw error
+    }
   })
