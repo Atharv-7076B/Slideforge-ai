@@ -16,17 +16,24 @@ const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET
  */
 const resolvedBaseURL =
   process.env.BETTER_AUTH_URL ||
-  (process.env.NODE_ENV !== 'production' ? 'http://localhost:3000' : '')
+  (process.env.NODE_ENV !== 'production'
+    ? 'http://localhost:3000'
+    : 'https://slideforge-ai-phi.vercel.app')
 
 const devTrustedOrigins =
   process.env.NODE_ENV !== 'production'
     ? (['http://localhost:*', 'http://127.0.0.1:*'] as const)
     : []
 
+const prodTrustedOrigins =
+  process.env.NODE_ENV === 'production'
+    ? ['https://slideforge-ai-phi.vercel.app']
+    : []
+
 export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: resolvedBaseURL,
-  trustedOrigins: [...devTrustedOrigins],
+  trustedOrigins: [...devTrustedOrigins, ...prodTrustedOrigins],
   database: prismaAdapter(prisma, {
     provider: 'postgresql',
   }),
@@ -53,4 +60,3 @@ export const auth = betterAuth({
   },
   plugins: [tanstackStartCookies()],
 })
-

@@ -7,12 +7,12 @@ export function toInternalPath(redirectTo?: string) {
       return redirectTo
     }
 
-    const url = new URL(
-      redirectTo,
+    const baseOrigin =
       typeof window !== 'undefined'
         ? window.location.origin
-        : 'http://localhost',
-    )
+        : process.env.BETTER_AUTH_URL || 'https://slideforge-ai-phi.vercel.app'
+
+    const url = new URL(redirectTo, baseOrigin)
     if (
       typeof window === 'undefined' ||
       url.origin === window.location.origin

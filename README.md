@@ -117,6 +117,7 @@ DATABASE_URL="postgresql://username:password@hostname/dbname?sslmode=require"
 # Better Auth Configuration
 BETTER_AUTH_SECRET="your-super-secret-auth-key-here"
 BETTER_AUTH_URL="http://localhost:3000"
+VITE_PUBLIC_APP_URL="http://localhost:3000"
 
 # OAuth Credentials (Better Auth)
 GOOGLE_CLIENT_ID="your-google-client-id"
@@ -175,6 +176,36 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to view the application.
+
+---
+
+## 🌐 Production Deployment (Vercel)
+
+When deploying to Vercel, configure these environment variables in your deployment settings:
+
+| Variable              | Value                            | Purpose                        |
+| --------------------- | -------------------------------- | ------------------------------ |
+| `BETTER_AUTH_URL`     | `https://your-domain.vercel.app` | Server-side auth base URL      |
+| `VITE_PUBLIC_APP_URL` | `https://your-domain.vercel.app` | Client-side auth configuration |
+| `DATABASE_URL`        | PostgreSQL connection string     | Prisma database connection     |
+| `BETTER_AUTH_SECRET`  | (generate strong secret)         | Auth session encryption        |
+| Other OAuth/API keys  | (as configured above)            | API credentials                |
+
+### OAuth Provider Configuration
+
+Before deploying, update your OAuth provider settings:
+
+**Google Console:**
+
+- Add authorized redirect URI: `https://your-domain.vercel.app/api/auth/callback/google`
+
+**GitHub:**
+
+- Set authorization callback URL: `https://your-domain.vercel.app/api/auth/callback/github`
+
+### Vercel Build Configuration
+
+No additional configuration needed—Vite and Nitro automatically build for Vercel's serverless runtime.
 
 ---
 
