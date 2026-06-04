@@ -14,11 +14,21 @@ const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET
  * to `getBaseURL(..., request)`, which requires `request.url` to be absolute. A
  * path-only URL makes `getOrigin` fail and throws before `/get-session` runs (500).
  */
-const resolvedBaseURL =
-  process.env.BETTER_AUTH_URL ||
-  (process.env.NODE_ENV !== 'production'
-    ? 'http://localhost:3000'
-    : 'https://slideforge-ai-phi.vercel.app')
+const isProd = process.env.NODE_ENV === 'production' || !!process.env.VERCEL
+const envUrl = process.env.BETTER_AUTH_URL || process.env.VITE_PUBLIC_APP_URL
+
+const resolvedBaseURL = (() => {
+  if (envUrl && !(isProd && (envUrl.includes('localhost') || envUrl.includes('127.0.0.1')))) {
+    return envUrl
+  }
+  if (isProd) {
+    if (process.env.VERCEL_URL) {
+      return `https://${process.env.VERCEL_URL}`
+    }
+    return 'https://slideforge-ai-phi.vercel.app'
+  }
+  return 'http://localhost:3000'
+})()
 
 const devTrustedOrigins =
   process.env.NODE_ENV !== 'production'

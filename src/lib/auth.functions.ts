@@ -2,7 +2,6 @@ import { createServerFn } from '@tanstack/react-start'
 import { getRequestHeaders } from '@tanstack/react-start/server'
 import { auth } from './auth'
 
-// Serialize session object with DateTime fields
 function serializeSession(session: any) {
   if (!session) return null
   return {
@@ -11,6 +10,8 @@ function serializeSession(session: any) {
           ...session.user,
           createdAt:
             session.user.createdAt?.toISOString?.() ?? session.user.createdAt,
+          updatedAt:
+            session.user.updatedAt?.toISOString?.() ?? session.user.updatedAt,
           emailVerified:
             session.user.emailVerified?.toISOString?.() ??
             session.user.emailVerified,
@@ -22,6 +23,9 @@ function serializeSession(session: any) {
           createdAt:
             session.session.createdAt?.toISOString?.() ??
             session.session.createdAt,
+          updatedAt:
+            session.session.updatedAt?.toISOString?.() ??
+            session.session.updatedAt,
           expiresAt:
             session.session.expiresAt?.toISOString?.() ??
             session.session.expiresAt,
