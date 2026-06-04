@@ -15,6 +15,19 @@ import { generateSlug } from 'random-word-slugs'
 import { PresentationStatus } from '@prisma/client'
 
 import { inngest } from '#/integrations/inngest/client'
+
+// Helper function to serialize Presentation with DateTime fields
+function serializePresentation(presentation: any) {
+  if (!presentation) return null
+  return {
+    ...presentation,
+    createdAt:
+      presentation.createdAt?.toISOString?.() ?? presentation.createdAt,
+    updatedAt:
+      presentation.updatedAt?.toISOString?.() ?? presentation.updatedAt,
+  }
+}
+
 export const createPresentation = createServerFn({
   method: 'POST',
 })
@@ -45,7 +58,7 @@ export const createPresentation = createServerFn({
           presentationId: presentation.id,
         },
       })
-      return presentation
+      return serializePresentation(presentation)
     } catch (error) {
       console.error('Failed to publish presentation/generate event', {
         presentationId: presentation.id,
@@ -71,10 +84,11 @@ export const updatePresentation = createServerFn({ method: 'POST' })
     if (!existing) throw new Error('Presentation not found')
     const updateData = patch
 
-    return prisma.presentation.update({
+    const updated = await prisma.presentation.update({
       where: { id, userId },
       data: updateData,
     })
+    return serializePresentation(updated)
   })
 
 export const deletePresentation = createServerFn({ method: 'POST' })
