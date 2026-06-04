@@ -1,6 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
 import { presentationIdInputSchema } from '../types/schemas'
-import { authMiddleware } from '#/middleware/auth'
+import { authFnMiddleware } from '#/middleware/auth'
 import { prisma } from '#/lib/db'
 
 // Helper function to serialize Presentation with DateTime fields
@@ -22,7 +22,7 @@ function serializePresentation(presentation: any) {
 
 export const getPresentationWithSLiedes = createServerFn({ method: 'GET' })
   .inputValidator((data) => presentationIdInputSchema.parse(data))
-  .middleware([authMiddleware])
+  .middleware([authFnMiddleware])
   .handler(async ({ data, context }) => {
     try {
       console.log('[getPresentationWithSLiedes] Called with id:', data.id)
@@ -52,7 +52,7 @@ export const getPresentationWithSLiedes = createServerFn({ method: 'GET' })
   })
 
 export const listPresentations = createServerFn({ method: 'GET' })
-  .middleware([authMiddleware])
+  .middleware([authFnMiddleware])
   .handler(async ({ context }) => {
     try {
       console.log('[listPresentations] Called')
