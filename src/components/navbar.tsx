@@ -15,7 +15,6 @@ import {
 } from './ui/dropdown-menu'
 
 type Theme = 'light' | 'dark'
-
 function getInitialTheme(): Theme {
   if (typeof window === 'undefined') return 'dark'
   const stored = localStorage.getItem('theme')
@@ -33,7 +32,9 @@ export default function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
-  const isAuthPage = location.pathname.startsWith('/login') || location.pathname.startsWith('/signup')
+  const isAuthPage =
+    location.pathname.startsWith('/login') ||
+    location.pathname.startsWith('/signup')
 
   useEffect(() => {
     setIsMobileMenuOpen(false)
@@ -51,7 +52,9 @@ export default function Navbar() {
     }
 
     const handleThemeChange = () => {
-      const current = document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+      const current = document.documentElement.classList.contains('dark')
+        ? 'dark'
+        : 'light'
       setTheme(current)
     }
 
@@ -79,10 +82,10 @@ export default function Navbar() {
   }
 
   return (
-    <header 
+    <header
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        isScrolled 
-          ? 'py-3 bg-white/80 dark:bg-[#050506]/80 backdrop-blur-md border-b border-zinc-200/60 dark:border-zinc-800/80 shadow-sm' 
+        isScrolled
+          ? 'py-3 bg-white/80 dark:bg-[#050506]/80 backdrop-blur-md border-b border-zinc-200/60 dark:border-zinc-800/80 shadow-sm'
           : 'py-5 bg-transparent border-b border-transparent'
       }`}
     >
@@ -99,16 +102,28 @@ export default function Navbar() {
 
         {/* Navigation Links - Center (hidden on mobile) */}
         <div className="hidden md:flex items-center gap-8">
-          <a href="/#features" className="text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-[#f97316] dark:hover:text-[#f97316] transition-colors">
+          <a
+            href="/#features"
+            className="text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-[#f97316] dark:hover:text-[#f97316] transition-colors"
+          >
             Features
           </a>
-          <a href="/#templates" className="text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-[#f97316] dark:hover:text-[#f97316] transition-colors">
+          <a
+            href="/#templates"
+            className="text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-[#f97316] dark:hover:text-[#f97316] transition-colors"
+          >
             Templates
           </a>
-          <a href="/#pricing" className="text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-[#f97316] dark:hover:text-[#f97316] transition-colors">
+          <a
+            href="/#pricing"
+            className="text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-[#f97316] dark:hover:text-[#f97316] transition-colors"
+          >
             Pricing
           </a>
-          <a href="/#docs" className="text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-[#f97316] dark:hover:text-[#f97316] transition-colors">
+          <a
+            href="/#docs"
+            className="text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-[#f97316] dark:hover:text-[#f97316] transition-colors"
+          >
             Docs
           </a>
         </div>
@@ -160,7 +175,9 @@ export default function Navbar() {
               >
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col gap-1">
-                    <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{session.user.name}</p>
+                    <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                      {session.user.name}
+                    </p>
                     <p className="text-xs text-zinc-500 truncate">
                       {session.user.email}
                     </p>
@@ -178,10 +195,19 @@ export default function Navbar() {
             </DropdownMenu>
           ) : (
             <div className="hidden md:flex items-center gap-2">
-              <Button asChild variant="ghost" size="sm" className="rounded-xl text-zinc-600 dark:text-zinc-300 hover:text-[#f97316] dark:hover:text-[#f97316] font-medium">
+              <Button
+                asChild
+                variant="ghost"
+                size="sm"
+                className="rounded-xl text-zinc-600 dark:text-zinc-300 hover:text-[#f97316] dark:hover:text-[#f97316] font-medium"
+              >
                 <Link to="/login">Sign In</Link>
               </Button>
-              <Button asChild size="sm" className="rounded-xl bg-[#f97316] hover:bg-[#ea580c] text-white font-medium px-4 transition-colors">
+              <Button
+                asChild
+                size="sm"
+                className="rounded-xl bg-[#f97316] hover:bg-[#ea580c] text-white font-medium px-4 transition-colors"
+              >
                 <Link to="/signup">Get Started</Link>
               </Button>
             </div>
@@ -214,29 +240,29 @@ export default function Navbar() {
             className="md:hidden border-b border-zinc-200/60 dark:border-zinc-800/80 bg-white/95 dark:bg-[#050506]/95 backdrop-blur-md px-6 py-6 space-y-6 flex flex-col items-stretch"
           >
             <div className="flex flex-col gap-4">
-              <a 
-                href="/#features" 
+              <a
+                href="/#features"
                 onClick={() => setIsMobileMenuOpen(false)}
                 className="text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-[#f97316] dark:hover:text-[#f97316] transition-colors py-1"
               >
                 Features
               </a>
-              <a 
-                href="/#templates" 
+              <a
+                href="/#templates"
                 onClick={() => setIsMobileMenuOpen(false)}
                 className="text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-[#f97316] dark:hover:text-[#f97316] transition-colors py-1"
               >
                 Templates
               </a>
-              <a 
-                href="/#pricing" 
+              <a
+                href="/#pricing"
                 onClick={() => setIsMobileMenuOpen(false)}
                 className="text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-[#f97316] dark:hover:text-[#f97316] transition-colors py-1"
               >
                 Pricing
               </a>
-              <a 
-                href="/#docs" 
+              <a
+                href="/#docs"
                 onClick={() => setIsMobileMenuOpen(false)}
                 className="text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-[#f97316] dark:hover:text-[#f97316] transition-colors py-1"
               >
@@ -252,23 +278,34 @@ export default function Navbar() {
               <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-3 px-1">
                   <Avatar className="size-9 border-2 border-[#f97316]/25">
-                    <AvatarImage src={session.user.image ?? ''} alt={session.user.name || 'User'} />
+                    <AvatarImage
+                      src={session.user.image ?? ''}
+                      alt={session.user.name || 'User'}
+                    />
                     <AvatarFallback className="bg-[#f97316]/10 text-[#f97316] font-medium">
-                      {session.user.name ? session.user.name.charAt(0).toUpperCase() : <User className="size-4" />}
+                      {session.user.name ? (
+                        session.user.name.charAt(0).toUpperCase()
+                      ) : (
+                        <User className="size-4" />
+                      )}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex flex-col">
-                    <span className="text-xs font-semibold text-zinc-900 dark:text-white">{session.user.name}</span>
-                    <span className="text-[10px] text-zinc-500 truncate max-w-[200px]">{session.user.email}</span>
+                    <span className="text-xs font-semibold text-zinc-900 dark:text-white">
+                      {session.user.name}
+                    </span>
+                    <span className="text-[10px] text-zinc-500 truncate max-w-[200px]">
+                      {session.user.email}
+                    </span>
                   </div>
                 </div>
-                <Button 
+                <Button
                   onClick={() => {
                     handleSignOut()
                     setIsMobileMenuOpen(false)
                   }}
-                  variant="outline" 
-                  size="sm" 
+                  variant="outline"
+                  size="sm"
                   className="rounded-xl border-red-500/20 hover:border-red-500/40 text-red-500 hover:bg-red-500/5 w-full h-10"
                 >
                   <LogOut className="mr-2 size-4" />
@@ -277,11 +314,22 @@ export default function Navbar() {
               </div>
             ) : (
               <div className="flex flex-col gap-3">
-                <Button asChild variant="ghost" className="rounded-xl h-10 text-zinc-650 dark:text-zinc-300 hover:text-[#f97316] dark:hover:text-[#f97316] font-medium justify-center">
-                  <Link to="/login" onClick={() => setIsMobileMenuOpen(false)}>Sign In</Link>
+                <Button
+                  asChild
+                  variant="ghost"
+                  className="rounded-xl h-10 text-zinc-650 dark:text-zinc-300 hover:text-[#f97316] dark:hover:text-[#f97316] font-medium justify-center"
+                >
+                  <Link to="/login" onClick={() => setIsMobileMenuOpen(false)}>
+                    Sign In
+                  </Link>
                 </Button>
-                <Button asChild className="rounded-xl bg-[#f97316] hover:bg-[#ea580c] text-white font-medium h-10 transition-colors justify-center">
-                  <Link to="/signup" onClick={() => setIsMobileMenuOpen(false)}>Get Started</Link>
+                <Button
+                  asChild
+                  className="rounded-xl bg-[#f97316] hover:bg-[#ea580c] text-white font-medium h-10 transition-colors justify-center"
+                >
+                  <Link to="/signup" onClick={() => setIsMobileMenuOpen(false)}>
+                    Get Started
+                  </Link>
                 </Button>
               </div>
             )}
@@ -291,4 +339,3 @@ export default function Navbar() {
     </header>
   )
 }
-
