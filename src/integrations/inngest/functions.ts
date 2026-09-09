@@ -112,7 +112,7 @@ async function checkImageKitAvailability(): Promise<boolean> {
     if (!response.ok) {
       // 400 is expected due to missing form body; means auth + endpoint are reachable.
       if (response.status === 400) {
-        console.log('[ImageKit Diagnostics] Probe successful: Auth details are correct and API is reachable.')
+        console.log('[ImageKit Diagnostics] Probe reached ImageKit successfully; 400 is expected for the intentionally incomplete probe request (auth details are verified and API is reachable).')
         return true
       }
       if (response.status === 401 || response.status === 403) {
@@ -133,80 +133,21 @@ async function checkImageKitAvailability(): Promise<boolean> {
 }
 
 import { getPlaceholderImage } from '#/features/presentation/utils/placeholder-mapper'
+import { generateSlideImage } from '#/server/gemini-image'
 
-async function generateImageFromPrompt(prompt: string): Promise<string | null> {
-  const hfToken = process.env.HUGGINGFACE_API_KEY ?? process.env.HF_TOKEN
-  if (!hfToken) {
-    console.error('[HF Image Generation] Error: Missing HF_TOKEN or HUGGINGFACE_API_KEY environment variable.')
+async function generateImageFromPrompt(prompt: string, slideOrder?: number): Promise<string | null> {
+  const generatedImage = await generateSlideImage(prompt, { slideOrder })
+
+  if (!generatedImage) {
     return null
   }
 
-  // Environment toggle check
-  if (process.env.VITE_USE_REAL_AI_IMAGES !== 'true') {
-    console.log('[HF Image Generation] Real AI images are disabled (VITE_USE_REAL_AI_IMAGES !== true). Bypassing HF API call.')
-    return null
+  const prefix = 'data:image/png;base64,'
+  if (generatedImage.startsWith(prefix)) {
+    return generatedImage.slice(prefix.length)
   }
 
-  const API_URL = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
-
-  try {
-    console.log('[HF Image Generation] Starting API call to:', API_URL)
-    console.log('[HF Image Generation] Prompt:', prompt)
-
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${hfToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        inputs: prompt,
-        parameters: {
-          width: 1024,
-          height: 576,
-          num_inference_steps: 4,
-        },
-      }),
-    })
-
-    console.log('[HF Image Generation] Response status:', response.status, response.statusText)
-
-    if (!response.ok) {
-      const errorBody = await response.text()
-      const errorMsg = `Hugging Face image generation failed (${response.status}): ${errorBody.slice(0, 300)}`
-      console.error('[HF Image Generation] Error:', errorMsg)
-      return null
-    }
-
-    // Validate Content-Type
-    const contentType = response.headers.get('content-type')
-    console.log('[HF Image Generation] Response content-type:', contentType)
-    if (contentType && !contentType.includes('image')) {
-      const errorText = await response.text()
-      console.error(`[HF Image Generation] Error: Non-image content-type returned (${contentType}):`, errorText.slice(0, 300))
-      return null
-    }
-
-    // Hugging Face returns binary image data
-    const buffer = await response.arrayBuffer()
-    if (!buffer || buffer.byteLength === 0) {
-      console.error('[HF Image Generation] Error: Received empty image buffer')
-      return null
-    }
-
-    // Convert buffer to base64
-    const b64 = Buffer.from(buffer).toString('base64')
-    console.log(
-      '[HF Image Generation] Successfully generated image, size:',
-      buffer.byteLength,
-      'bytes',
-    )
-
-    return b64
-  } catch (error) {
-    console.error('[HF Image Generation] Connection/Fetch failed:', error)
-    return null
-  }
+  return generatedImage
 }
 
 function getStylePromptPrefix(style: string | null | undefined): string {
@@ -250,9 +191,9 @@ async function createSlideImageAndUpload(params: {
     })
 
     const prefix = getStylePromptPrefix(params.style)
-    const enrichedPrompt = `${prefix}. ${params.imagePrompt}. High quality, presentation visual, no text, no letters, no logos, 16:9 aspect ratio.`
+    const enrichedPrompt = `${prefix}. ${params.imagePrompt}. High quality, presentation visual, strictly no text, no numbers, no labels, no statistics, no charts with values, no letters, no logos, 16:9 aspect ratio.`
 
-    const base64Image = await generateImageFromPrompt(enrichedPrompt)
+    const base64Image = await generateImageFromPrompt(enrichedPrompt, params.slideOrder)
     if (!base64Image) {
       console.warn('[Image Pipeline] Image generation bypassed or failed. Falling back to placeholder.')
       const fallback = getPlaceholderImage(params.slideTitle, params.slideContent, params.imagePrompt)
@@ -379,8 +320,9 @@ const slideSchema = z.object({
   quoteText: z.string().optional().describe('Quote body (required ONLY if layoutType is "quote").'),
   quoteAuthor: z.string().optional().describe('Quote attribution/author (required ONLY if layoutType is "quote").'),
   stats: z.array(z.object({
-    value: z.string().describe('Large display number/metric (e.g. "99%", "$12M", "5x")'),
-    label: z.string().describe('Short descriptive label for the metric')
+    value: z.string().describe('Large display number/metric (e.g. "99%", "$12M", "5x", "3X")'),
+    label: z.string().describe('Short descriptive label for the metric (e.g. "Faster", "Auto-Categorization Accuracy")'),
+    type: z.string().optional().describe('Metric type identifier'),
   })).optional().describe('List of 2-3 key metrics (required ONLY if layoutType is "stats").'),
   gridItems: z.array(z.object({
     title: z.string().describe('Feature/pillar title'),
@@ -464,17 +406,17 @@ Choose layouts based on slide purpose:
 
 ## Layout specifications (Fill appropriate fields)
 - If layoutType is "quote": Fill "quoteText" and "quoteAuthor".
-- If layoutType is "stats": Fill "stats" array (2-3 items).
+- If layoutType is "stats": Fill "stats" array (2-3 items). Represent numerical metrics as structured data with "value" (e.g. "3X", "95%", "$12M") and "label" (e.g. "Faster", "Auto-Categorization Accuracy").
 - If layoutType is "grid": Fill "gridItems" array (exactly 3 items).
 - If layoutType is "split-left" or "split-right": Fill "body" or "bullets".
 - If layoutType is "standard": Fill "body" or "bullets".
 
 ## imagePrompt requirements (critical)
-Create a detailed prompt for generating an image that illustrates the slide's core metaphor.
-- Do NOT generate generic or text-heavy prompts.
-- Describe the setting, lighting, color tone, style matching "${presentation.style}", and cinematic details.
-- Avoid text, letters, watermarks, screens, or phones in images.
-- Example: "A sleek workspace overlooking a neon fujimi skyline, cinematic lighting, fuchsia and slate accents, futuristic illustration, ultra detailed, 16:9"
+Create a detailed prompt for generating a decorative visual illustration that captures the slide's core metaphor.
+- AI-generated decorative images must NEVER be responsible for rendering important numerical or statistical information. All statistics, numbers, and data points belong on the slide canvas as structured text elements.
+- Image prompts MUST explicitly avoid: text, letters, numbers, statistics, labels, data charts containing values, watermarks, screens, or logos.
+- Focus exclusively on metaphorical visuals, atmosphere, setting, lighting, color harmony matching "${presentation.style}", and cinematic composition.
+- Example: "A sleek modern architectural atrium with glass geometric facets, morning sunlight streaming through pillars, warm amber and dark slate tones, minimalist editorial 3D render, ultra detailed, 16:9 widescreen"
 
 ## Narrative structure
 Ensure the presentation has a clear progression from introduction, core problem/opportunity, detailed solution/arguments, data/proof points, and a strong conclusion.`
@@ -552,8 +494,8 @@ Ensure the presentation has a clear progression from introduction, core problem/
           }
           if (layoutType === 'stats' && stats.length === 0) {
             stats = [
-              { value: '75%', label: 'Projected growth index' },
-              { value: '2x', label: 'Operational speed improvement' }
+              { value: '75%', label: 'Projected growth index', type: 'metric' },
+              { value: '2x', label: 'Operational speed improvement', type: 'metric' }
             ]
           }
           if (layoutType === 'grid' && gridItems.length === 0) {
@@ -687,17 +629,17 @@ Choose layouts based on slide purpose:
 
 ## Layout specifications (Fill appropriate fields)
 - If layoutType is "quote": Fill "quoteText" and "quoteAuthor".
-- If layoutType is "stats": Fill "stats" array (2-3 items).
+- If layoutType is "stats": Fill "stats" array (2-3 items). Represent numerical metrics as structured data with "value" (e.g. "3X", "95%", "$12M") and "label" (e.g. "Faster", "Auto-Categorization Accuracy").
 - If layoutType is "grid": Fill "gridItems" array (exactly 3 items).
 - If layoutType is "split-left" or "split-right": Fill "body" or "bullets".
 - If layoutType is "standard": Fill "body" or "bullets".
 
 ## imagePrompt requirements (critical)
-Create a detailed prompt for generating an image that illustrates the slide's core metaphor.
-- Do NOT generate generic or text-heavy prompts.
-- Describe the setting, lighting, color tone, style matching "${presentation.style}", and cinematic details.
-- Avoid text, letters, watermarks, screens, or phones in images.
-- Example: "A sleek workspace overlooking a neon fujimi skyline, cinematic lighting, fuchsia and slate accents, futuristic illustration, ultra detailed, 16:9"
+Create a detailed prompt for generating a decorative visual illustration that captures the slide's core metaphor.
+- AI-generated decorative images must NEVER be responsible for rendering important numerical or statistical information. All statistics, numbers, and data points belong on the slide canvas as structured text elements.
+- Image prompts MUST explicitly avoid: text, letters, numbers, statistics, labels, data charts containing values, watermarks, screens, or logos.
+- Focus exclusively on metaphorical visuals, atmosphere, setting, lighting, color harmony matching "${presentation.style}", and cinematic composition.
+- Example: "A sleek modern architectural atrium with glass geometric facets, morning sunlight streaming through pillars, warm amber and dark slate tones, minimalist editorial 3D render, ultra detailed, 16:9 widescreen"
 
 ## Narrative structure
 Ensure the presentation has a clear progression from introduction, core problem/opportunity, detailed solution/arguments, data/proof points, and a strong conclusion.`
@@ -762,8 +704,8 @@ Ensure the presentation has a clear progression from introduction, core problem/
       }
       if (layoutType === 'stats' && stats.length === 0) {
         stats = [
-          { value: '75%', label: 'Projected growth index' },
-          { value: '2x', label: 'Operational speed improvement' }
+          { value: '75%', label: 'Projected growth index', type: 'metric' },
+          { value: '2x', label: 'Operational speed improvement', type: 'metric' }
         ]
       }
       if (layoutType === 'grid' && gridItems.length === 0) {

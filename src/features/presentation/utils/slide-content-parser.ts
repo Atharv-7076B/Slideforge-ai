@@ -1,10 +1,16 @@
+export type SlideStatMetric = {
+  value: string
+  label: string
+  type?: 'metric' | string
+}
+
 export type SlideContentData = {
   layoutType: 'hero' | 'split-left' | 'split-right' | 'full-image' | 'quote' | 'stats' | 'grid' | 'standard'
   body?: string
   bullets?: string[]
   quoteText?: string
   quoteAuthor?: string
-  stats?: Array<{ value: string; label: string }>
+  stats?: SlideStatMetric[]
   gridItems?: Array<{ title: string; description: string }>
 }
 
@@ -80,18 +86,36 @@ export function parseSlideContent(content: string): SlideContentData {
       quoteAuthor = String(quoteAuthor)
     }
 
-    // Sanitize stats
-    let stats = parsedData.stats
-    if (Array.isArray(stats)) {
-      stats = stats.map(s => {
-        if (!s || typeof s !== 'object') return { value: '0', label: 'Metric' }
+    // Sanitize stats: preserve structured numerical values strictly
+    let stats: SlideStatMetric[] | undefined = undefined
+    if (Array.isArray(parsedData.stats)) {
+      stats = parsedData.stats.map((s: any) => {
+        if (!s || typeof s !== 'object') {
+          return { value: '0', label: 'Metric', type: 'metric' }
+        }
+
+        let rawVal = s.value !== null && s.value !== undefined ? String(s.value).trim() : ''
+        let rawLabel = s.label !== null && s.label !== undefined ? String(s.label).trim() : ''
+
+        // If label is missing but value contains a composite phrase (e.g. "3X Faster" or "95% Accuracy")
+        if (!rawLabel && rawVal) {
+          const metricMatch = rawVal.match(
+            /^([$€£¥]?\s*[-+]?\d+(?:[.,]\d+)?\s*[%xXkKmMbBtT+]?|\b\d+X\b|\b\d+%\b)(?:\s*[-–—:]?\s*)(.*)$/i
+          )
+          if (metricMatch && metricMatch[1] && metricMatch[2]) {
+            rawVal = metricMatch[1].trim()
+            rawLabel = metricMatch[2].trim()
+          } else {
+            rawLabel = 'Metric'
+          }
+        }
+
         return {
-          value: s.value !== null && s.value !== undefined ? String(s.value) : '0',
-          label: s.label !== null && s.label !== undefined ? String(s.label) : 'Metric'
+          value: rawVal || '0',
+          label: rawLabel || 'Metric',
+          type: 'metric' as const,
         }
       })
-    } else {
-      stats = undefined
     }
 
     // Sanitize gridItems
@@ -121,9 +145,9 @@ export function parseSlideContent(content: string): SlideContentData {
     if (layoutType === 'stats') {
       if (!stats || stats.length === 0) {
         stats = [
-          { value: '85%', label: 'Efficiency and throughput optimization' },
-          { value: '3.5x', label: 'Acceleration in pipeline processing velocity' },
-          { value: '100%', label: 'Enterprise reliability and performance grade' }
+          { value: '85%', label: 'Efficiency and throughput optimization', type: 'metric' },
+          { value: '3.5x', label: 'Acceleration in pipeline processing velocity', type: 'metric' },
+          { value: '100%', label: 'Enterprise reliability and performance grade', type: 'metric' }
         ]
       }
       body = body || 'Key performance benchmarks and quantitative milestones achieved during the implementation cycle.'

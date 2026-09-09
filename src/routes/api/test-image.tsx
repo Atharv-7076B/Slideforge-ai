@@ -16,11 +16,15 @@ export const Route = createFileRoute('/api/test-image')({
 })
 
 function TestImagePage() {
-  const data = Route.useLoaderData() as { image: string }
+  const data = Route.useLoaderData() as { image: string | null }
 
   return (
     <div className="p-10">
-      <img src={data.image} alt="Generated" className="w-full rounded-xl" />
+      {data.image ? (
+        <img src={data.image} alt="Generated" className="w-full rounded-xl" />
+      ) : (
+        <p className="text-gray-500">No image generated (generation disabled or failed).</p>
+      )}
     </div>
   )
 }
