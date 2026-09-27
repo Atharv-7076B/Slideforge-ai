@@ -62,8 +62,8 @@ async function runDbQueryWithRetry<T>(fn: () => Promise<T>, retries = 3, delay =
       lastError = err
       const msg = err instanceof Error ? err.message : String(err)
       const code = (err as any)?.code
-      const isPoolTimeout = 
-        msg.includes('Timed out fetching a new connection') || 
+      const isPoolTimeout =
+        msg.includes('Timed out fetching a new connection') ||
         msg.includes('connection pool') ||
         msg.includes('closed the connection') ||
         code === 'P2024' ||
@@ -301,7 +301,243 @@ async function uploadBase64ToImageKit(params: {
   throw lastError
 }
 
+// =============================================================================
+// PRESENTATION GENERATION PROMPT — shared builder
+// =============================================================================
+//
+// Style values below are taken verbatim from `getStylePromptPrefix()` above,
+// which is the one place in this codebase where real Style option values are
+// already enumerated. Tone and Layout-preference values are NOT enumerated
+// anywhere in this file, so `getToneGuide` / `normalizeLayoutPreference` below
+// are written to degrade gracefully for any string value rather than assuming
+// a fixed list — see the report for what's confirmed vs. inferred.
 
+type StyleKey =
+  | 'futuristic'
+  | 'creative'
+  | 'startup-pitch'
+  | 'bold'
+  | 'minimal'
+  | 'education'
+  | 'dark-mode'
+  | 'professional'
+
+function normalizeStyleKey(style: string | null | undefined): StyleKey {
+  const s = (style ?? '').toLowerCase().trim()
+  switch (s) {
+    case 'futuristic':
+      return 'futuristic'
+    case 'creative':
+      return 'creative'
+    case 'startup-pitch':
+      return 'startup-pitch'
+    case 'bold':
+      return 'bold'
+    case 'minimalist':
+    case 'minimal':
+      return 'minimal'
+    case 'education':
+      return 'education'
+    case 'dark-mode':
+      return 'dark-mode'
+    case 'professional':
+    case 'corporate':
+    default:
+      return 'professional'
+  }
+}
+
+// Visual DESIGN STRATEGY per style (distinct from the image-prefix strings in
+// getStylePromptPrefix, which only steer the image model's aesthetic). This
+// steers Gemini's slide-level decisions: hierarchy, density, layout mix, and
+// what kind of image concepts to ask for.
+const STYLE_DESIGN_GUIDES: Record<StyleKey, string> = {
+  minimal: `**Minimal** — generous whitespace, restrained content, simple visual hierarchy, few decorative elements, clean uncluttered compositions. Prefer fewer, more confident statements over exhaustive lists. Favor "hero", "standard", and "full-image" with plenty of breathing room over dense "grid"/"stats" slides. Image concepts should be subtle, quiet, and uncluttered — not busy.`,
+  bold: `**Bold** — strong visual hierarchy, larger and punchier statements, high visual impact, shorter copy per slide, dramatic compositions. Favor "hero" and "full-image" slides with striking single statements over dense text blocks. Image concepts should be dramatic and attention-grabbing, with strong contrast and a clear focal point.`,
+  professional: `**Professional/Corporate** — structured information, polished business-presentation register, restrained visual language, clear hierarchy, evidence-oriented storytelling. Favor "standard", "split-left"/"split-right", and "stats" (only with real numbers) for a business audience. Image concepts should be clean, corporate, and understated — supporting the argument, not overpowering it.`,
+  creative: `**Creative** — more metaphorical storytelling, unconventional but still usable compositions, greater visual variety across the deck, expressive imagery. Mix layout archetypes more freely (including "quote" and "grid") to keep the pacing surprising. Image concepts should lean into visual metaphor and mood rather than literal depictions.`,
+  'startup-pitch': `**Startup Pitch** — sleek, high-end, VC-facing register: confident and benefit-driven copy, premium restrained visuals, clear traction/vision framing. Favor "hero" and "stats" (only with real numbers) for key claims, with "split" slides for product/market explanation. Image concepts should read as premium, modern workspace/product visuals, not decorative clutter.`,
+  futuristic: `**Futuristic** — technology-forward visual language, advanced/abstract imagery, cinematic lighting, forward-looking framing in the copy itself (not just the images). Favor "full-image" and "hero" for high-impact technology moments, "split" for mechanism explanations. Image concepts should depict advanced, high-tech environments and metaphors.`,
+  education: `**Education** — clarity first, explanatory visuals, progressive teaching structure (concepts build on each other slide-to-slide), avoid unnecessary decoration. Favor "standard" and "grid" for structured explanations, "quote" sparingly for key takeaways. Image concepts should be conceptual/explanatory illustrations, not purely decorative art.`,
+  'dark-mode': `**Dark Mode** — moody, premium, high-contrast presentation feel; confident, slightly cinematic copy. Favor "full-image" and "hero" slides that can carry a dramatic dark visual, balanced with "standard"/"split" for readable detail. Image concepts should lean into deep, moody lighting and glowing highlights.`,
+}
+
+// Tone rules that are confirmed by the user's brief. Anything not in this map
+// still gets real behavioral guidance via the generic fallback below, so an
+// unmodeled Tone value doesn't silently become a no-op.
+const KNOWN_TONE_GUIDES: Record<string, string> = {
+  formal: `**Formal** — professional vocabulary, objective and measured language, polished phrasing, restrained claims. Avoid slang, contractions, and exclamation points. Suitable for a business/academic/professional audience.`,
+  casual: `**Casual** — conversational language, approachable wording, shorter sentences, natural phrasing. Contractions are fine. Avoid corporate jargon and stiff phrasing.`,
+  technical: `**Technical** — precise technical terminology, explain mechanisms and architecture where relevant, include meaningful implementation-level detail, avoid oversimplifying. Assume a technically literate reader.`,
+  persuasive: `**Persuasive** — emphasize concrete benefits, build a strong argument progression (problem → solution → evidence → impact), and land on compelling, confident conclusions.`,
+  informative: `**Informative** — factual and explanatory: prioritize clarity and accuracy over persuasion, using neutral, objective wording rather than emotional or promotional language. Explain concepts progressively, building on what was just established. Use concise, direct sentences. Headings should plainly describe what the slide covers. Bullets should communicate concrete information, not vague claims. Speaker notes may add further explanation or context. Never invent facts, statistics, sources, or claims not present in the topic/content.`,
+  educational: `**Educational** — explanatory language, introduce concepts progressively, prioritize clarity and understanding over cleverness, use concrete examples where they help.`,
+  inspirational: `**Inspirational** — energetic, forward-looking language that builds momentum and conviction, while staying grounded in the actual content (no empty hype).`,
+  friendly: `**Friendly** — warm, welcoming, second-person language that feels like a helpful guide rather than a formal announcement.`,
+}
+
+function getToneGuide(tone: string | null | undefined): string {
+  const key = (tone ?? '').toLowerCase().trim()
+  if (key && KNOWN_TONE_GUIDES[key]) {
+    return KNOWN_TONE_GUIDES[key]
+  }
+  // Generic fallback: still gives Gemini concrete instructions to follow for
+  // any Tone value this app defines that isn't explicitly modeled above,
+  // instead of the tone being reduced to an unused label.
+  const label = tone && tone.trim() ? tone.trim() : 'neutral'
+  return `**${label}** — infer the natural writing conventions this label implies (vocabulary, sentence length and rhythm, level of formality, emotional register) and apply them consistently in every heading, body, bullet, quote, and speaker note.`
+}
+
+// Real Layout option values, confirmed against
+// src/features/constant/presentation-options.tsx:
+//   Text Heavy   -> "text-heavy"
+//   Visual Focus -> "visual"
+//   Balanced     -> "balanced"
+//   Bullet Points -> "bullet-points"
+type LayoutPreferenceKey = 'text-heavy' | 'visual' | 'balanced' | 'bullet-points'
+
+function normalizeLayoutPreference(layout: string | null | undefined): LayoutPreferenceKey {
+  const l = (layout ?? '').toLowerCase().trim()
+  switch (l) {
+    case 'text-heavy':
+      return 'text-heavy'
+    case 'visual':
+      return 'visual'
+    case 'bullet-points':
+      return 'bullet-points'
+    case 'balanced':
+    default:
+      return 'balanced'
+  }
+}
+
+const LAYOUT_PREFERENCE_GUIDES: Record<LayoutPreferenceKey, string> = {
+  'text-heavy': `**Text Heavy** — prioritize "standard", "grid", "quote", and "stats" (where real numbers are available); allow substantial visible text and structured information per slide. Use "split-left"/"split-right" over "full-image", and reserve "hero"/"full-image" for the opening/closing slide only. Copy density can run higher than other layout preferences.`,
+  visual: `**Visual Focus** — prioritize "hero", "full-image", and "split-left"/"split-right" layouts with visually dominant imagery; minimize dense text per slide and let the image concept carry most of the slide's meaning, with copy playing a supporting role.`,
+  balanced: `**Balanced** — use a deliberate mixture of "standard", "split-left"/"split-right", "grid", "quote", "stats", and "full-image"/"hero" based on what each slide's content actually calls for; maintain visual rhythm by rotating through multiple archetypes rather than settling into one or two.`,
+  'bullet-points': `**Bullet Points** — prioritize layouts that clearly present multiple discrete items as lists: "standard" and "grid" filled with "bullets"/"gridItems". Use "stats" only when real quantitative data is provided in the source content. Avoid forcing "full-image" or "hero" onto slides whose actual content is a bulleted list — reserve those for the true opening/closing beats only.`,
+}
+
+function getNarrativeGuidance(slideCount: number): string {
+  return `Before writing any slide, privately determine:
+1. This presentation's core objective and the audience implied by the topic.
+2. The narrative arc: what must be established first, what problem/opportunity to explore, what evidence supports it, and how it should resolve.
+3. The distinct narrative "beats" this specific topic actually needs (e.g. introduction, context, problem, insight, solution, evidence, impact, conclusion) — only the beats that genuinely fit, not a fixed checklist.
+4. How to map those beats onto exactly ${slideCount} slides.
+
+Rough shape for common counts (adapt to the topic — this is guidance, not a template to copy):
+- ~5 slides: introduction, problem/context, core insight or solution, evidence, conclusion.
+- ~8 slides: introduction, context, problem, insight, solution, evidence, impact, conclusion.
+- ~10+ slides: the above, plus additional supporting/detail slides for sub-topics, examples, or extra evidence — only where the topic genuinely warrants them.
+
+Never pad with generic filler slides just to hit the number, and never drop a beat the story needs. The final "slides" array MUST contain exactly ${slideCount} items — not one more, not one fewer.`
+}
+
+function getLayoutSelectionGuidance(layoutPreferenceGuide: string): string {
+  return `Choose each slide's "layoutType" (hero, split-left, split-right, full-image, quote, stats, grid, standard) based on:
+- that slide's narrative purpose (opening/closing moment vs. argument vs. evidence vs. a single key-insight beat, etc.)
+- the layout preference below
+- the style's density/imagery expectations (see the Style section above)
+- avoiding the same layoutType twice in a row unless the content genuinely calls for it
+
+Layout preference: ${layoutPreferenceGuide}
+
+This preference is a bias, not a rigid per-slide script — pick whichever layoutType best serves each specific slide while leaning toward the archetypes the preference favors. Do not reuse a fixed layout sequence by slide position (e.g. "slide 1 is always hero, slide 4 is always quote, slide 6 is always stats") — the sequence must emerge from this topic's narrative and the settings above, not from where the slide sits in the deck.`
+}
+
+/**
+ * Single source of truth for the presentation-generation system prompt.
+ * Used by BOTH `generatePresentation` (Inngest) and `generatePresentationInline`
+ * so the two generation paths can never drift out of sync again.
+ */
+export function buildPresentationSystemPrompt(params: {
+  topic: string
+  slideCount: number
+  style: string | null | undefined
+  tone: string | null | undefined
+  layout: string | null | undefined
+}): string {
+  const { topic, slideCount, style, tone, layout } = params
+
+  const styleGuide = STYLE_DESIGN_GUIDES[normalizeStyleKey(style)]
+  const toneGuide = getToneGuide(tone)
+  const layoutPreferenceGuide = LAYOUT_PREFERENCE_GUIDES[normalizeLayoutPreference(layout)]
+
+  return `You are a world-class presentation designer and visual copywriter.
+You will write a compelling, narrative-driven presentation on the given topic.
+
+Your ONLY output is a valid JSON object — no markdown fences, no preamble, no explanation.
+
+## Presentation context
+- Topic: "${topic}"
+- Style: ${style ?? 'professional'}
+- Tone: ${tone ?? 'neutral'}
+- Layout preference: ${layout ?? 'balanced'}
+- Slide count: exactly ${slideCount} slides.
+
+## Narrative planning
+${getNarrativeGuidance(slideCount)}
+
+## Style must shape the visual design strategy (not just the image prompt)
+${styleGuide}
+
+## Tone must shape the actual writing
+${toneGuide}
+
+## Layout selection
+${getLayoutSelectionGuidance(layoutPreferenceGuide)}
+
+## Style + tone + layout work together
+Treat these as interacting controls, not independent ones: let the writing (Tone), the visual density and imagery approach (Style), and the layoutType mix (Layout preference) reinforce each other on every slide, so the deck reads as one coherent creative decision instead of three separate settings bolted together. Do not simply insert the setting names into slide text — the effect must show up in the actual wording, density, and layout choices.
+
+## Content density
+Let style, tone, and layout preference jointly determine how much text appears on each slide (for example: a minimal/restrained style with a formal tone reads as concise; a bold style with a casual tone and visual layout preference reads as short and punchy; a professional style with a technical tone and text-heavy layout preference reads as detailed and information-dense). Do not give every slide the same amount of text.
+
+## Layout specifications (fill the fields that match the chosen layoutType)
+- "quote": fill "quoteText" and "quoteAuthor".
+- "stats": fill "stats" (2-3 items), each with "value" and "label" — see the numerical-data rule below.
+- "grid": fill "gridItems" (exactly 3 items).
+- "split-left", "split-right", or "standard": fill "body" and/or "bullets".
+
+## Numerical data — do not hallucinate
+- Never invent financial, scientific, business, performance, or statistical figures.
+- If the topic supplies numbers, use them accurately.
+- If quantitative evidence would strengthen a slide but no reliable number is available, do NOT fabricate one (e.g. "75%", "2x") — choose a non-"stats" layoutType instead (such as "standard" or "grid") and describe the evidence qualitatively.
+- Only choose "stats" when you can populate it with numbers that are either given in the topic or well-established facts you're genuinely confident about.
+
+## imagePrompt requirements (critical)
+- Make each imagePrompt unique and specific to that slide's own concept or purpose — never a generic phrase like "AI presentation image" and never just a restatement of the topic.
+- Describe the visual subject/metaphor, environment, lighting, composition, and mood, consistent with the "${style ?? 'professional'}" style above.
+- AI-generated images must NEVER carry text, letters, numbers, statistics, labels, captions, charts with values, tables, readable UI screens, logos, or watermarks — all real text and numbers belong to the slide renderer, never the image.
+- Vary the visual metaphor across slides — do not reuse the same image concept twice.
+
+## Speaker notes
+Write speakerNotes that complement rather than repeat the visible slide text — why the slide matters, the key takeaway, what to emphasize when presenting it.`
+}
+
+/**
+ * Clamp generated slides to the exact requested count as a safety net on top
+ * of the prompt instruction. We only ever truncate (never fabricate slides to
+ * pad a short result), consistent with the "no filler content" requirement.
+ */
+function enforceSlideCount<T>(slides: T[], requestedCount: number, logContext: Record<string, unknown>): T[] {
+  if (slides.length > requestedCount) {
+    console.warn('[Presentation Generation] Model returned more slides than requested; truncating', {
+      ...logContext,
+      requested: requestedCount,
+      received: slides.length,
+    })
+    return slides.slice(0, requestedCount)
+  }
+  if (slides.length < requestedCount) {
+    console.warn('[Presentation Generation] Model returned fewer slides than requested', {
+      ...logContext,
+      requested: requestedCount,
+      received: slides.length,
+    })
+  }
+  return slides
+}
 
 const slideSchema = z.object({
   heading: z.string().describe('Concise slide title (max 6-8 words)'),
@@ -382,44 +618,13 @@ export const generatePresentation = inngest.createFunction(
         )
         validateRequiredAiEnv()
 
-        const systemPrompt = `You are a world-class presentation designer and visual copywriter.
-You will write a compelling, narrative-driven presentation on the given topic.
-
-Your ONLY output is a valid JSON object — no markdown fences, no preamble, no explanation.
-
-## Presentation context
-- Topic: "${presentation.prompt}"
-- Theme/Style: ${presentation.style}
-- Tone: ${presentation.tone}
-- Slide count: ${presentation.slideCount}
-
-## Slide layout strategy
-To make the presentation feel professional and cinematic like Gamma.app, vary layoutType dynamically across slides. Avoid repeating the same layout back-to-back.
-Choose layouts based on slide purpose:
-- Slide 1 (Intro): Must be "hero" layout.
-- Slides 2-3 (Problem/Context): Use "split-left" or "split-right".
-- Slide 4 (Key Insight/Quote): Use "quote" to break the pace.
-- Slide 5 (Core Features/Pillars): Use "grid" (columns).
-- Slide 6 (Performance/Data): Use "stats" (metrics).
-- Slide 7 (Visual/Impact): Use "full-image" with overlaid text.
-- Slide 8 (Conclusion/CTA): Use "hero" or "split" to wrap up.
-
-## Layout specifications (Fill appropriate fields)
-- If layoutType is "quote": Fill "quoteText" and "quoteAuthor".
-- If layoutType is "stats": Fill "stats" array (2-3 items). Represent numerical metrics as structured data with "value" (e.g. "3X", "95%", "$12M") and "label" (e.g. "Faster", "Auto-Categorization Accuracy").
-- If layoutType is "grid": Fill "gridItems" array (exactly 3 items).
-- If layoutType is "split-left" or "split-right": Fill "body" or "bullets".
-- If layoutType is "standard": Fill "body" or "bullets".
-
-## imagePrompt requirements (critical)
-Create a detailed prompt for generating a decorative visual illustration that captures the slide's core metaphor.
-- AI-generated decorative images must NEVER be responsible for rendering important numerical or statistical information. All statistics, numbers, and data points belong on the slide canvas as structured text elements.
-- Image prompts MUST explicitly avoid: text, letters, numbers, statistics, labels, data charts containing values, watermarks, screens, or logos.
-- Focus exclusively on metaphorical visuals, atmosphere, setting, lighting, color harmony matching "${presentation.style}", and cinematic composition.
-- Example: "A sleek modern architectural atrium with glass geometric facets, morning sunlight streaming through pillars, warm amber and dark slate tones, minimalist editorial 3D render, ultra detailed, 16:9 widescreen"
-
-## Narrative structure
-Ensure the presentation has a clear progression from introduction, core problem/opportunity, detailed solution/arguments, data/proof points, and a strong conclusion.`
+        const systemPrompt = buildPresentationSystemPrompt({
+          topic: presentation.prompt,
+          slideCount: presentation.slideCount,
+          style: presentation.style,
+          tone: presentation.tone,
+          layout: presentation.layout,
+        })
 
         const result = await generateText({
           model: google('gemini-2.5-flash'),
@@ -428,14 +633,16 @@ Ensure the presentation has a clear progression from introduction, core problem/
           prompt: presentation.prompt,
         })
 
+        const slides = enforceSlideCount(result.output.slides, presentation.slideCount, { presentationId })
+
         console.log(
           '[Presentation Generation] Slide content generated successfully',
           {
-            slideCount: result.output.slides.length,
+            slideCount: slides.length,
           },
         )
 
-        return result.output
+        return { slides }
       })
 
       await step.run('delete-old-slides', async () => {
@@ -479,7 +686,7 @@ Ensure the presentation has a clear progression from introduction, core problem/
       await step.run('save-slides-to-db', async () => {
         const data = slides.map((slide, index) => {
           // Strict validation and default fallbacks for slide content JSON fields
-          const layoutType = slide.layoutType || 'standard'
+          let layoutType = slide.layoutType || 'standard'
           let body = slide.body || ''
           let bullets = slide.bullets || []
           let quoteText = slide.quoteText || ''
@@ -493,10 +700,14 @@ Ensure the presentation has a clear progression from introduction, core problem/
             quoteAuthor = quoteAuthor || 'Leader'
           }
           if (layoutType === 'stats' && stats.length === 0) {
-            stats = [
-              { value: '75%', label: 'Projected growth index', type: 'metric' },
-              { value: '2x', label: 'Operational speed improvement', type: 'metric' }
-            ]
+            // Do NOT fabricate numbers to fill a stats slide (previously injected
+            // fake "75%"/"2x" metrics here). Downgrade to a non-stats layout instead
+            // and fall back to qualitative copy.
+            console.warn('[Presentation Generation] Model chose "stats" layout without real stats; downgrading to "standard" instead of inventing numbers', {
+              presentationId,
+              slideOrder: index,
+            })
+            layoutType = 'standard'
           }
           if (layoutType === 'grid' && gridItems.length === 0) {
             gridItems = [
@@ -605,44 +816,13 @@ export async function generatePresentationInline(presentationId: string) {
     console.log('[Presentation Generation Inline] Starting slide content generation')
     validateRequiredAiEnv()
 
-    const systemPrompt = `You are a world-class presentation designer and visual copywriter.
-You will write a compelling, narrative-driven presentation on the given topic.
-
-Your ONLY output is a valid JSON object — no markdown fences, no preamble, no explanation.
-
-## Presentation context
-- Topic: "${presentation.prompt}"
-- Theme/Style: ${presentation.style}
-- Tone: ${presentation.tone}
-- Slide count: ${presentation.slideCount}
-
-## Slide layout strategy
-To make the presentation feel professional and cinematic like Gamma.app, vary layoutType dynamically across slides. Avoid repeating the same layout back-to-back.
-Choose layouts based on slide purpose:
-- Slide 1 (Intro): Must be "hero" layout.
-- Slides 2-3 (Problem/Context): Use "split-left" or "split-right".
-- Slide 4 (Key Insight/Quote): Use "quote" to break the pace.
-- Slide 5 (Core Features/Pillars): Use "grid" (columns).
-- Slide 6 (Performance/Data): Use "stats" (metrics).
-- Slide 7 (Visual/Impact): Use "full-image" with overlaid text.
-- Slide 8 (Conclusion/CTA): Use "hero" or "split" to wrap up.
-
-## Layout specifications (Fill appropriate fields)
-- If layoutType is "quote": Fill "quoteText" and "quoteAuthor".
-- If layoutType is "stats": Fill "stats" array (2-3 items). Represent numerical metrics as structured data with "value" (e.g. "3X", "95%", "$12M") and "label" (e.g. "Faster", "Auto-Categorization Accuracy").
-- If layoutType is "grid": Fill "gridItems" array (exactly 3 items).
-- If layoutType is "split-left" or "split-right": Fill "body" or "bullets".
-- If layoutType is "standard": Fill "body" or "bullets".
-
-## imagePrompt requirements (critical)
-Create a detailed prompt for generating a decorative visual illustration that captures the slide's core metaphor.
-- AI-generated decorative images must NEVER be responsible for rendering important numerical or statistical information. All statistics, numbers, and data points belong on the slide canvas as structured text elements.
-- Image prompts MUST explicitly avoid: text, letters, numbers, statistics, labels, data charts containing values, watermarks, screens, or logos.
-- Focus exclusively on metaphorical visuals, atmosphere, setting, lighting, color harmony matching "${presentation.style}", and cinematic composition.
-- Example: "A sleek modern architectural atrium with glass geometric facets, morning sunlight streaming through pillars, warm amber and dark slate tones, minimalist editorial 3D render, ultra detailed, 16:9 widescreen"
-
-## Narrative structure
-Ensure the presentation has a clear progression from introduction, core problem/opportunity, detailed solution/arguments, data/proof points, and a strong conclusion.`
+    const systemPrompt = buildPresentationSystemPrompt({
+      topic: presentation.prompt,
+      slideCount: presentation.slideCount,
+      style: presentation.style,
+      tone: presentation.tone,
+      layout: presentation.layout,
+    })
 
     const result = await generateText({
       model: google('gemini-2.5-flash'),
@@ -651,7 +831,7 @@ Ensure the presentation has a clear progression from introduction, core problem/
       prompt: presentation.prompt,
     })
 
-    const { slides } = result.output
+    const slides = enforceSlideCount(result.output.slides, presentation.slideCount, { presentationId })
 
     console.log('[Presentation Generation Inline] Slide content generated successfully', {
       slideCount: slides.length,
@@ -690,7 +870,7 @@ Ensure the presentation has a clear progression from introduction, core problem/
     }
 
     const data = slides.map((slide, index) => {
-      const layoutType = slide.layoutType || 'standard'
+      let layoutType = slide.layoutType || 'standard'
       let body = slide.body || ''
       let bullets = slide.bullets || []
       let quoteText = slide.quoteText || ''
@@ -703,10 +883,13 @@ Ensure the presentation has a clear progression from introduction, core problem/
         quoteAuthor = quoteAuthor || 'Leader'
       }
       if (layoutType === 'stats' && stats.length === 0) {
-        stats = [
-          { value: '75%', label: 'Projected growth index', type: 'metric' },
-          { value: '2x', label: 'Operational speed improvement', type: 'metric' }
-        ]
+        // Do NOT fabricate numbers to fill a stats slide (previously injected
+        // fake "75%"/"2x" metrics here). Downgrade to a non-stats layout instead.
+        console.warn('[Presentation Generation Inline] Model chose "stats" layout without real stats; downgrading to "standard" instead of inventing numbers', {
+          presentationId,
+          slideOrder: index,
+        })
+        layoutType = 'standard'
       }
       if (layoutType === 'grid' && gridItems.length === 0) {
         gridItems = [
@@ -783,6 +966,3 @@ Ensure the presentation has a clear progression from introduction, core problem/
     throw error
   }
 }
-
-
-
